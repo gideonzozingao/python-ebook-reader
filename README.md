@@ -1,4 +1,4 @@
-# epub-reader
+# Python ebook-reader
 
 A feature-rich desktop e-book reader built with Python and PySide6 (Qt6). Supports EPUB, PDF, and Markdown files with an integrated library, note-taking, flashcards, mind maps, and reading statistics.
 
@@ -173,11 +173,11 @@ User preferences (theme, font, font size, etc.) are stored via Qt's QSettings â€
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| F11 | Toggle fullscreen |
-| Ctrl+F | Open find/search bar (EPUB/Markdown) |
-| Left / Right arrows | Previous / Next chapter (EPUB) |
+| Key                 | Action                               |
+| ------------------- | ------------------------------------ |
+| F11                 | Toggle fullscreen                    |
+| Ctrl+F              | Open find/search bar (EPUB/Markdown) |
+| Left / Right arrows | Previous / Next chapter (EPUB)       |
 
 ---
 
