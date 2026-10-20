@@ -3,6 +3,7 @@ from datetime import datetime
 from html import escape as esc
 
 from book_reader.core.library import Library
+from book_reader.services import notes_text
 from book_reader.services.journal import entry_meta, group_entries, note_entry, topic_color
 from book_reader.themes import HIGHLIGHT_COLORS, THEMES
 from book_reader.utils import fmt_duration, pretty
@@ -141,7 +142,7 @@ class SummaryBuilder:
                 if e["quote"]:
                     inner.append(f'<p style="margin:0 0 6px 0"><i>“{_br(e["quote"])}”</i></p>')
                 if e["text"]:
-                    inner.append(f'<p style="margin:0 0 6px 0">{_br(e["text"])}</p>')
+                    inner.append(f'<p style="margin:0 0 6px 0">{notes_text.render_html(e["text"])}</p>')
                 meta = esc(entry_meta(e, mode, self.fmt))
                 inner.append(f'<p style="margin:0; color:{muted}; font-size:9pt">{meta}</p>')
                 cell = "".join(inner)

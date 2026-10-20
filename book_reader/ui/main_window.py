@@ -2,31 +2,38 @@
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
+    QHBoxLayout,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
+    QPushButton,
     QStackedWidget,
+    QVBoxLayout,
 )
 
 from book_reader.constants import BOOK_EXTS
 from book_reader.core.library import Library
 from book_reader.core.prefs import Prefs
 from book_reader.core.tracker import ReadingTracker
-from book_reader.services import backup
+from book_reader.services import backup, inbox
+from book_reader.services.notes_sync import NotesSync
 from book_reader.services.summary import SummaryBuilder, stored_highlights
 from book_reader.themes import THEMES, build_qss
 from book_reader.ui.dialogs.flashcard_dialog import FlashcardDialog
 from book_reader.ui.dialogs.mindmap_dialog import MindMapDialog
+from book_reader.ui.dialogs.notes_hub_dialog import NotesHubDialog
 from book_reader.ui.dialogs.reminder_dialog import ReminderDialog
 from book_reader.ui.dialogs.stats_dialog import StatsDialog
 from book_reader.ui.pages.library_page import LibraryPage
 from book_reader.ui.pages.pdf_page import PdfPage
 from book_reader.ui.pages.reader_page import ReaderPage
+from book_reader.ui.widgets.appearance_panel import AppearancePanel
 from book_reader.utils import folder_label
 
 
@@ -34,8 +41,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.prefs = Prefs()
+        self._default_font = QFont(QApplication.font())  # the font chosen at start-up
         self.library = Library()
         self.tracker = ReadingTracker(self.library, self)
+        self.sync = NotesSync(self.library, self.prefs, self)
+        self.library.add_listener(self.sync.schedule)
         self._qss_theme = None
         self.setWindowTitle("Book Reader")
         self.resize(1180, 820)
@@ -60,9 +70,14 @@ class MainWindow(QMainWindow):
         self.library_page.restoreRequested.connect(self.restore_library)
         self.library_page.reviewRequested.connect(self.review_notes)
         self.library_page.mindmapRequested.connect(self.open_mindmaps)
+        self.library_page.notesRequested.connect(lambda: self.open_notes_hub())
+        self.library_page.prefsChanged.connect(self.on_prefs_changed)
+        QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_appearance)
         for page in (self.reader_page, self.pdf_page):
             page.backRequested.connect(self.show_library)
             page.prefsChanged.connect(self.on_prefs_changed)
+            page.noteLinkRequested.connect(self.follow_note_link)
+        QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(lambda: self.open_notes_hub())
 
         fs = QAction(self)
         fs.setShortcut("F11")
@@ -71,19 +86,54 @@ class MainWindow(QMainWindow):
 
         self.apply_theme()
         self.show_library()
+        if self.sync.enabled():  # refresh the sync folder shortly after start-up
+            QTimer.singleShot(2500, self.sync.sync_all)
 
     # -- theme -------------------------------------------------------------- #
 
     def apply_theme(self):
-        theme = self.prefs.v["theme"]
-        if theme != self._qss_theme:
-            QApplication.instance().setStyleSheet(build_qss(THEMES[theme]))
-            self._qss_theme = theme
+        """Colour theme and interface font for the whole application."""
+        v = self.prefs.v
+        key = (v["theme"], int(v["ui_font_size"]), v["ui_font"])
+        if key != self._qss_theme:
+            font = QFont(self._default_font)
+            if v["ui_font"]:
+                font.setFamily(v["ui_font"])
+            font.setPointSizeF(float(v["ui_font_size"]))
+            QApplication.setFont(font)
+            QApplication.instance().setStyleSheet(build_qss(THEMES[v["theme"]], v["ui_font_size"] / 10))
+            self._qss_theme = key
 
     def on_prefs_changed(self):
+        """A setting changed anywhere: restyle everything that is on screen."""
         self.apply_theme()
         self.reader_page.apply_style()
         self.pdf_page.apply_style()
+        self.library_page.refresh()
+        theme = THEMES[self.prefs.v["theme"]]
+        for dlg in (self.reader_page._mm_dialog, self.pdf_page._mm_dialog,
+                    getattr(self, "_mm_dialog", None)):
+            if dlg is not None:
+                dlg.set_theme(theme)
+
+    def open_appearance(self):
+        """Appearance settings (Ctrl+,): applies live and is remembered for every book."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Appearance")
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 8)
+        panel = AppearancePanel(self.prefs)
+        panel.changed.connect(self.on_prefs_changed)
+        lay.addWidget(panel)
+        close = QPushButton("Done")
+        close.setObjectName("primary")
+        close.clicked.connect(dlg.accept)
+        row = QHBoxLayout()
+        row.setContentsMargins(16, 0, 16, 0)
+        row.addStretch()
+        row.addWidget(close)
+        lay.addLayout(row)
+        dlg.exec()
 
     def toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
@@ -95,6 +145,7 @@ class MainWindow(QMainWindow):
         self.pdf_page.close_book()
         self.setWindowTitle("Book Reader")
         self.library_page.refresh()
+        self.library_page.set_inbox_count(inbox.count_due(self.library))
         self.stack.setCurrentWidget(self.library_page)
 
     def open_book(self, book_id: int):
@@ -105,6 +156,50 @@ class MainWindow(QMainWindow):
         if page.open_book(book_id):
             self.setWindowTitle(f"{row['title']} — Book Reader")
             self.stack.setCurrentWidget(page)
+
+    # -- notes hub, note links, sync ---------------------------------------------- #
+
+    def open_notes_hub(self, tab: int = 0):
+        book_id = (self.reader_page.book_id if self.stack.currentWidget() is self.reader_page
+                   else self.pdf_page.book_id if self.stack.currentWidget() is self.pdf_page else None)
+        dlg = NotesHubDialog(self, self.library, self.prefs, self.sync,
+                             THEMES[self.prefs.v["theme"]], tab, book_id)
+        dlg.openRequested.connect(self.open_entry)
+        dlg.exec()
+        if self.stack.currentWidget() is self.library_page:
+            self.library_page.set_inbox_count(inbox.count_due(self.library))
+
+    def open_entry(self, e: dict):
+        """Open the book a note belongs to and scroll to the note."""
+        row = self.library.get(e["book_id"])
+        if row is None:
+            return
+        self.open_book(e["book_id"])
+        page = self.pdf_page if row["format"] == "pdf" else self.reader_page
+        QTimer.singleShot(300, lambda: self._jump_to_entry(page, e))
+
+    def _jump_to_entry(self, page, e: dict):
+        if page.book_id != e["book_id"]:
+            return
+        if e["kind"] == "note":
+            page.jump_to_location(e["index"], e["pos"])
+            if page.journal.isHidden():
+                page.act_journal.setChecked(True)
+        elif e["kind"] == "highlight":
+            page.jump_to_note(e["id"])
+        else:
+            page.jump_to_mark(e["id"])
+
+    def follow_note_link(self, url: str):
+        """A [[note:ID]] link inside a note was clicked."""
+        if not url.startswith("note:"):
+            return
+        row = self.library.book_note(int(url[5:]))
+        if row is None:
+            QMessageBox.information(self, "Note not found", "The linked note no longer exists.")
+            return
+        self.open_entry(dict(kind="note", id=row["id"], book_id=row["book_id"],
+                             index=row["spine_index"] or 0, pos=row["scroll_ratio"] or 0.0))
 
     def show_stats(self):
         StatsDialog(self, self.library, self.prefs).exec()

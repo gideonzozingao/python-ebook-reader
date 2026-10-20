@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
 )
 
 from book_reader.constants import DEFAULT_TOPICS
+from book_reader.ui.widgets.format_bar import FormatBar
 
 
 class JournalNoteDialog(QDialog):
     """Edit an existing journal note (section, text) and optionally re-pin its location."""
 
-    def __init__(self, parent, topics, topic="General", body="", ref="", editing=False):
+    def __init__(self, parent, topics, topic="General", body="", ref="", editing=False,
+                 link_picker=None):
         super().__init__(parent)
         self.setWindowTitle("Edit book note" if editing else "Add book note")
         self.setMinimumWidth(500)
@@ -50,6 +52,7 @@ class JournalNoteDialog(QDialog):
         self.edit = QPlainTextEdit(body)
         self.edit.setPlaceholderText("Write your note…")
         self.edit.setMinimumHeight(140)
+        lay.addWidget(FormatBar(self.edit, link_picker=link_picker))
         lay.addWidget(self.edit)
 
         self.relocate = QCheckBox("Move this note to my current reading position")

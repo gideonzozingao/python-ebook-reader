@@ -1,6 +1,5 @@
 """Whole-book text search shared by the EPUB and Markdown readers."""
 
-
 class TextSearchMixin:
     """Needs: self.spine (list) and self.chapter_text(index) -> plain text."""
 
