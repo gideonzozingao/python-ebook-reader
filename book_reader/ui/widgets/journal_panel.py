@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from book_reader.constants import DEFAULT_TOPICS, SUMMARY_MODES
+from book_reader.services import notes_text
 from book_reader.services.journal import (
     entry_meta,
     group_entries,
@@ -23,14 +24,16 @@ from book_reader.services.journal import (
     topic_color,
 )
 from book_reader.ui.helpers import fit_cards, make_shortcut
+from book_reader.ui.widgets.format_bar import FormatBar
 
 
 class JournalCard(QFrame):
     clicked = Signal(int)
     editRequested = Signal(int)
     deleteRequested = Signal(int)
+    linkActivated = Signal(str)   # note:ID or tag:name clicked inside the text
 
-    def __init__(self, e: dict, meta: str, show_topic: bool, t: dict):
+    def __init__(self, e: dict, meta: str, show_topic: bool, t: dict, backlinks: int = 0):
         super().__init__()
         self.nid = e["id"]
         self.setObjectName("journalCard")
@@ -48,13 +51,17 @@ class JournalCard(QFrame):
             chip = QLabel(e["topic"])
             chip.setStyleSheet(f"color:{color}; font-weight:600;")
             lay.addWidget(chip)
-        body = QLabel(e["text"])
-        body.setTextFormat(Qt.TextFormat.PlainText)
+        body = QLabel(notes_text.render_html(e["text"], t))
+        body.setTextFormat(Qt.TextFormat.RichText)
         body.setWordWrap(True)
+        body.setOpenExternalLinks(False)
+        body.linkActivated.connect(self.linkActivated.emit)
         lay.addWidget(body)
 
         foot = QHBoxLayout()
-        info = QLabel(meta)
+        info = QLabel(meta + (f"  ·  ↩ {backlinks}" if backlinks else ""))
+        if backlinks:
+            info.setToolTip(f"Linked from {backlinks} other note{'' if backlinks == 1 else 's'}")
         info.setObjectName("muted")
         info.setWordWrap(True)
         foot.addWidget(info, 1)
@@ -86,6 +93,7 @@ class BookNotesPanel(QWidget):
     summaryRequested = Signal()
     exportRequested = Signal()
     reviewRequested = Signal()
+    linkRequested = Signal(str)   # a note: link was clicked
     mapRequested = Signal()
 
     def __init__(self):
@@ -94,6 +102,7 @@ class BookNotesPanel(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumWidth(400)
         self.provider = None
+        self.link_picker = None   # set by the page: () -> '[[note:ID|title]]' or None
         self.fmt = "epub"
         self._locked: dict | None = None
         self._last = None
@@ -137,6 +146,8 @@ class BookNotesPanel(QWidget):
         self.edit.setMinimumHeight(90)
         self.edit.setMaximumHeight(150)
         self.edit.textChanged.connect(self._on_text)
+        self.format_bar = FormatBar(self.edit, link_picker=self._pick_link)
+        lay.addWidget(self.format_bar)
         lay.addWidget(self.edit)
         make_shortcut(self.edit, "Ctrl+Return", self._add)
 
@@ -273,6 +284,10 @@ class BookNotesPanel(QWidget):
         live = self.provider() if self.provider else None
         self._shown_chapter = live["chapter"] if live else None
         q = self.search.text().strip().lower()
+        backlinks: dict = {}
+        for n in notes:
+            for target in notes_text.extract_links(n["body"] or ""):
+                backlinks[target] = backlinks.get(target, 0) + 1
         shown = []
         for n in notes:
             if (self.only_section.isChecked() and live
@@ -299,13 +314,23 @@ class BookNotesPanel(QWidget):
             self.vbox.addWidget(head)
             for e in items:
                 card = JournalCard(e, entry_meta(e, mode, self.fmt, topic=False),
-                                   mode != "Topic", t)
+                                   mode != "Topic", t, backlinks.get(e["id"], 0))
+                card.linkActivated.connect(self._on_link)
                 card.clicked.connect(self.jumpRequested.emit)
                 card.editRequested.connect(self.editRequested.emit)
                 card.deleteRequested.connect(self.deleteRequested.emit)
                 self.vbox.addWidget(card)
         self.vbox.addStretch()
         QTimer.singleShot(0, lambda: fit_cards(self.scroll, self.vbox, JournalCard))
+
+    def _pick_link(self):
+        return self.link_picker() if self.link_picker else None
+
+    def _on_link(self, url: str):
+        if url.startswith("tag:"):
+            self.search.setText("#" + url[4:])  # filter this book's notes by the tag
+        else:
+            self.linkRequested.emit(url)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

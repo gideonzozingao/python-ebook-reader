@@ -123,6 +123,10 @@ class MindMapDialog(QDialog):
         self.combo.currentIndexChanged.connect(self._on_combo)
         self._load_list()
 
+    def set_theme(self, theme: dict):
+        self.t = theme
+        self.view.set_theme(theme)
+
     # -- maps ------------------------------------------------------------------------ #
 
     def _pin(self):

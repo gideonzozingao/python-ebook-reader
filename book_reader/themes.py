@@ -17,12 +17,21 @@ THEMES = {
                   outline="#9a8660", accent="#8a5100", accent_hi="#9e641a",
                   on_accent="#ffffff", muted="#5f4f35", link="#8a5100", sel="#f0dcb4",
                   hover="#ebdfc3", desk="#d8c9a5"),
+    "Forest": dict(bg="#f6fbf4", fg="#1a1c19", panel="#e9f1e6", border="#c4d4c0",
+                   outline="#6f7b6d", accent="#2e7d32", accent_hi="#3f8f43",
+                   on_accent="#ffffff", muted="#444c42", link="#2e7d32", sel="#cfe8cb",
+                   hover="#dfeadb", desk="#d5e0d1"),
     "Dark": dict(bg="#141218", fg="#e6e0e9", panel="#211f26", border="#49454f",
                  outline="#938f99", accent="#d0bcff", accent_hi="#dccfff",
                  on_accent="#381e72", muted="#cac4d0", link="#d0bcff", sel="#4a4458",
                  hover="#2b2930", desk="#0f0d13"),
 }
 
+
+THEMES["Midnight"] = dict(
+    bg="#0f1420", fg="#dfe6f5", panel="#171e2e", border="#2c3650", outline="#8693b2",
+    accent="#8ab4ff", accent_hi="#a7c5ff", on_accent="#0b2a5e", muted="#a9b4cc",
+    link="#8ab4ff", sel="#27345a", hover="#1e2740", desk="#0a0e18")
 
 HIGHLIGHT_COLORS = {
     "Yellow": "#ffd54f",
@@ -52,15 +61,15 @@ def check_icon(t: dict) -> str:
     return path.as_posix()
 
 
-def build_qss(t: dict) -> str:
+def build_qss(t: dict, scale: float = 1.0) -> str:
     """Material Design 3 styling: tonal surfaces, pill buttons, rounded cards and fields."""
     return f"""
 QWidget {{ color: {t['fg']}; }}
 QMainWindow, QDialog, #page {{ background: {t['bg']}; }}
 #sidePanel {{ background: {t['panel']}; }}
 QLabel {{ background: transparent; }}
-QLabel#h1 {{ font-size: 28px; font-weight: 400; }}
-QLabel#h2 {{ font-size: 16px; font-weight: 500; }}
+QLabel#h1 {{ font-size: {int(28 * scale)}px; font-weight: 400; }}
+QLabel#h2 {{ font-size: {int(16 * scale)}px; font-weight: 500; }}
 QLabel#muted {{ color: {t['muted']}; }}
 
 /* top app bar */

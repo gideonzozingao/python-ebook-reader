@@ -1,6 +1,6 @@
 """PDF reader page."""
 from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup, QColor
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from book_reader.core.library import Library
@@ -34,6 +35,7 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
+from book_reader.ui.widgets.appearance_panel import AppearancePanel
 from book_reader.ui.widgets.notes_panel import NotesPanel
 from book_reader.ui.widgets.pdf_view import PdfView
 from book_reader.ui.widgets.status_bar import StatusBar
@@ -42,6 +44,7 @@ from book_reader.ui.widgets.status_bar import StatusBar
 class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin, QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
+    noteLinkRequested = Signal(str)   # a [[note:ID]] link was clicked
     book_format = "pdf"
 
     def __init__(self, library: Library, prefs: Prefs, tracker: ReadingTracker):
@@ -190,27 +193,25 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
         act("＋", lambda: self.view.zoom_by(1.15), None, "Zoom in (Ctrl++)")
         act("Fit width", self.view.set_fit_width, None, "Fit to width (Ctrl+0)")
 
+        self.appearance = AppearancePanel(self.prefs)
         menu = QMenu(self)
-        group = QActionGroup(self)
-        group.setExclusive(True)
-        self.theme_actions = {}
-        for name in THEMES:
-            a = menu.addAction(name)
-            a.setCheckable(True)
-            group.addAction(a)
-            a.triggered.connect(lambda _=False, n=name: self.set_theme(n))
-            self.theme_actions[name] = a
-        menu.addSeparator()
-        self.act_invert = menu.addAction("Invert PDF colors")
-        self.act_invert.setCheckable(True)
-        self.act_invert.triggered.connect(lambda on: self.set_invert(bool(on)))
-        btn = QToolButton()
-        btn.setText("Theme")
-        btn.setToolTip("Theme and PDF color inversion")
-        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        btn.setMenu(menu)
+        wa = QWidgetAction(menu)
+        wa.setDefaultWidget(self.appearance)
+        menu.addAction(wa)
+        menu.aboutToShow.connect(self.appearance.sync)
+        aa = QToolButton()
+        aa.setText("Aa")
+        aa.setToolTip("Appearance: colour theme and fonts for the whole app (Ctrl+,)")
+        aa.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        aa.setMenu(menu)
+        bold = aa.font()
+        bold.setBold(True)
+        aa.setFont(bold)
         bar.addSeparator()
-        bar.addWidget(btn)
+        bar.addWidget(aa)
+        self._restyle = QTimer(self, singleShot=True, interval=140)
+        self._restyle.timeout.connect(self.prefsChanged.emit)
+        self.appearance.changed.connect(self._restyle.start)
         root.addWidget(bar)
 
     def _build_find_bar(self, root):
@@ -301,20 +302,9 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
         if invert != self.view.invert:
             self.view.cache.clear()
         self.view.invert = invert
-        self.act_invert.setChecked(invert)
-        for name, a in self.theme_actions.items():
-            a.setChecked(name == self.prefs.v["theme"])
         self.view.viewport().update()
         if self.doc is not None:
             self.refresh_journal()
-
-    def set_theme(self, name):
-        self.prefs.set("theme", name)
-        self.prefsChanged.emit()
-
-    def set_invert(self, on):
-        self.prefs.set("pdf_invert", on)
-        self.apply_style()
 
     # -- opening / closing -------------------------------------------------- #
 

@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS card_progress(
 CREATE TABLE IF NOT EXISTS mindmaps(
     id INTEGER PRIMARY KEY, book_id INTEGER, title TEXT, data TEXT, created_at REAL,
     updated_at REAL);
+CREATE TABLE IF NOT EXISTS note_reviews(
+    key TEXT PRIMARY KEY, book_id INTEGER, box INTEGER DEFAULT 0, due REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS book_tags(
     book_id INTEGER, name TEXT COLLATE NOCASE, UNIQUE(book_id, name));
 CREATE TABLE IF NOT EXISTS book_collections(
@@ -64,6 +66,7 @@ class Library:
         self.root = DATA_DIR
         self.books_dir = self.root / "books"
         self.covers_dir = self.root / "covers"
+        self._listeners: list = []   # called with a book id whenever its notes change
         self._open()
 
     def close(self):
@@ -228,7 +231,7 @@ class Library:
         self.db.execute("DELETE FROM book_notes WHERE book_id=?", (book_id,))
         self.db.execute("DELETE FROM book_summaries WHERE book_id=?", (book_id,))
         for table in ("bookmarks", "pdf_marks", "card_progress", "book_tags",
-                      "book_collections", "mindmaps"):
+                      "book_collections", "mindmaps", "note_reviews"):
             self.db.execute(f"DELETE FROM {table} WHERE book_id=?", (book_id,))
         self.db.execute("DELETE FROM sessions WHERE book_id=?", (book_id,))
         self.db.execute("DELETE FROM subjects WHERE book_id=?", (book_id,))
@@ -361,15 +364,19 @@ class Library:
             (book_id, spine_index, start, end, quote_text, note, color, time.time()),
         )
         self.db.commit()
+        self._notes_changed(book_id)
         return cur.lastrowid
 
     def update_note(self, note_id, note, color):
         self.db.execute("UPDATE notes SET note=?, color=? WHERE id=?", (note, color, note_id))
         self.db.commit()
+        self._notes_changed(self._book_of("notes", note_id))
 
     def delete_note(self, note_id):
+        book_id = self._book_of("notes", note_id)
         self.db.execute("DELETE FROM notes WHERE id=?", (note_id,))
         self.db.commit()
+        self._notes_changed(book_id)
 
     # -- book journal (free-form notes, auto-tagged with section + page) ------ #
 
@@ -399,6 +406,7 @@ class Library:
              loc.get("ratio", 0.0), loc.get("page", 0), loc.get("total", 0),
              loc.get("progress", 0.0), now, now))
         self.db.commit()
+        self._notes_changed(book_id)
         return cur.lastrowid
 
     def update_book_note(self, note_id, topic, body, loc: dict | None = None):
@@ -413,10 +421,13 @@ class Library:
             self.db.execute("UPDATE book_notes SET topic=?, body=?, updated_at=? WHERE id=?",
                             (topic, body, time.time(), note_id))
         self.db.commit()
+        self._notes_changed(self._book_of("book_notes", note_id))
 
     def delete_book_note(self, note_id):
+        book_id = self._book_of("book_notes", note_id)
         self.db.execute("DELETE FROM book_notes WHERE id=?", (note_id,))
         self.db.commit()
+        self._notes_changed(book_id)
 
     def get_summary(self, book_id) -> str:
         row = self.db.execute("SELECT text FROM book_summaries WHERE book_id=?",
@@ -475,15 +486,19 @@ class Library:
             " VALUES(?,?,?,?,?,?,?)",
             (book_id, page, json.dumps(rects), quote, note, color, time.time()))
         self.db.commit()
+        self._notes_changed(book_id)
         return cur.lastrowid
 
     def update_pdf_mark(self, mark_id, note, color):
         self.db.execute("UPDATE pdf_marks SET note=?, color=? WHERE id=?", (note, color, mark_id))
         self.db.commit()
+        self._notes_changed(self._book_of("pdf_marks", mark_id))
 
     def delete_pdf_mark(self, mark_id):
+        book_id = self._book_of("pdf_marks", mark_id)
         self.db.execute("DELETE FROM pdf_marks WHERE id=?", (mark_id,))
         self.db.commit()
+        self._notes_changed(book_id)
 
     # -- flashcard progress (Leitner boxes) ------------------------------------ #
 
@@ -592,4 +607,35 @@ class Library:
 
     def delete_mindmap(self, map_id):
         self.db.execute("DELETE FROM mindmaps WHERE id=?", (map_id,))
+        self.db.commit()
+
+    # -- change notifications (used by the notes sync folder) -------------------- #
+
+    def add_listener(self, fn):
+        self._listeners.append(fn)
+
+    def _book_of(self, table: str, row_id) -> int | None:
+        row = self.db.execute(f"SELECT book_id FROM {table} WHERE id=?", (row_id,)).fetchone()
+        return row["book_id"] if row else None
+
+    def _notes_changed(self, book_id):
+        if book_id is None:
+            return
+        for fn in list(self._listeners):
+            try:
+                fn(book_id)
+            except Exception:  # a failing listener must never break saving a note
+                pass
+
+    # -- note review inbox (spaced resurfacing) ----------------------------------- #
+
+    def review_states(self) -> dict:
+        return {r["key"]: (r["box"], r["due"]) for r in self.db.execute(
+            "SELECT key, box, due FROM note_reviews")}
+
+    def set_review(self, key: str, book_id, box: int, due: float):
+        self.db.execute(
+            "INSERT INTO note_reviews(key,book_id,box,due) VALUES(?,?,?,?)"
+            " ON CONFLICT(key) DO UPDATE SET box=excluded.box, due=excluded.due",
+            (key, book_id, box, due))
         self.db.commit()

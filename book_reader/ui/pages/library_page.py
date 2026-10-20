@@ -26,12 +26,14 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from book_reader.constants import COVER_H, COVER_W
 from book_reader.core.library import Library
 from book_reader.services import goals
 from book_reader.ui.dialogs.subject_dialog import SubjectDialog
+from book_reader.ui.widgets.appearance_panel import AppearancePanel
 from book_reader.ui.widgets.cover import make_collection_tile, make_cover
 from book_reader.utils import ago, fmt_duration
 
@@ -47,6 +49,8 @@ class LibraryPage(QWidget):
     restoreRequested = Signal()
     reviewRequested = Signal(int)
     mindmapRequested = Signal(int)
+    notesRequested = Signal()
+    prefsChanged = Signal()   # appearance settings were changed here
 
     def __init__(self, library: Library, prefs=None):
         super().__init__()
@@ -88,6 +92,25 @@ class LibraryPage(QWidget):
         add_books = QPushButton("＋  Add Books")
         add_books.setObjectName("primary")
         add_books.clicked.connect(self.addFilesRequested.emit)
+        aa = None
+        if prefs is not None:  # the same appearance panel as in the readers
+            self.appearance = AppearancePanel(prefs)
+            aa_menu = QMenu(self)
+            wa = QWidgetAction(aa_menu)
+            wa.setDefaultWidget(self.appearance)
+            aa_menu.addAction(wa)
+            aa_menu.aboutToShow.connect(self.appearance.sync)
+            aa = QToolButton()
+            aa.setText("Aa")
+            aa.setToolTip("Appearance: colour theme and fonts for the whole app (Ctrl+,)")
+            aa.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            aa.setMenu(aa_menu)
+            bold = aa.font()
+            bold.setBold(True)
+            aa.setFont(bold)
+            self._restyle = QTimer(self, singleShot=True, interval=140)
+            self._restyle.timeout.connect(self.prefsChanged.emit)
+            self.appearance.changed.connect(self._restyle.start)
         more = QToolButton()
         more.setText("⋯")
         more.setToolTip("Library tools: back up and restore")
@@ -97,11 +120,17 @@ class LibraryPage(QWidget):
         more_menu.addAction("Restore from backup…").triggered.connect(
             lambda: self.restoreRequested.emit())
         more.setMenu(more_menu)
+        self.btn_notes = QPushButton("📝  Notes")
+        self.btn_notes.setToolTip("Search all notes, daily review inbox, dashboard, export and sync (Ctrl+Shift+F)")
+        self.btn_notes.clicked.connect(lambda: self.notesRequested.emit())
         head.addWidget(self.btn_continue)
+        head.addWidget(self.btn_notes)
         head.addWidget(stats)
         head.addWidget(add_folder)
         head.addWidget(add_books)
         head.addWidget(more)
+        if aa is not None:
+            head.addWidget(aa)
         root.addLayout(head)
 
         tools = QHBoxLayout()
@@ -262,6 +291,13 @@ class LibraryPage(QWidget):
             "Collection": "Search by collection…",
         }.get(text, "Search by title or author…"))
         self.refresh()
+
+    def set_inbox_count(self, n: int):
+        """Badge on the Notes button: how many notes are due for review today."""
+        self.btn_notes.setText(f"📝  Notes · {n} to review" if n else "📝  Notes")
+        self.btn_notes.setObjectName("tonal" if n else "")
+        self.btn_notes.style().unpolish(self.btn_notes)
+        self.btn_notes.style().polish(self.btn_notes)
 
     def show_message(self, text: str):
         self.subtitle.setText(text)

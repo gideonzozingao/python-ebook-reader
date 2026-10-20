@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
 rem ================== SETTINGS ==================
 set "APP_DIR=C:\Users\gzozingao\Documents\Learning\epub-reader"
@@ -30,7 +30,9 @@ rem ---- 1. Make sure the virtual environment exists ----
 if not exist "%VENV%\Scripts\python.exe" (
     set "PY="
     where py >nul 2>&1 && set "PY=py -3"
-    if not defined PY where python >nul 2>&1 && set "PY=python"
+    if not defined PY (
+        where python >nul 2>&1 && set "PY=python"
+    )
     if not defined PY (
         echo Python was not found. Install Python 3.10 or newer from python.org
         echo and tick "Add python.exe to PATH" in the installer.
@@ -38,7 +40,7 @@ if not exist "%VENV%\Scripts\python.exe" (
         exit /b 1
     )
     echo Creating virtual environment in %VENV% ...
-    %PY% -m venv "%VENV%"
+    !PY! -m venv "%VENV%"
     if errorlevel 1 (
         echo Could not create the virtual environment.
         pause
@@ -48,7 +50,8 @@ if not exist "%VENV%\Scripts\python.exe" (
 
 rem ---- 2. Install packages only when something is missing (or on /update) ----
 set "NEED_INSTALL="
-if /i "%~1"=="/update" set "NEED_INSTALL=1"
+set "UPDATE="
+if /i "%~1"=="/update" set "UPDATE=1" & set "NEED_INSTALL=1"
 if not defined NEED_INSTALL (
     "%VENV%\Scripts\python.exe" -c "import importlib.util as u,sys; sys.exit(0 if all(u.find_spec(m) for m in ('PySide6','bs4','markdown','pymupdf')) else 1)" >nul 2>&1
     if errorlevel 1 set "NEED_INSTALL=1"
@@ -81,5 +84,9 @@ if /i "%~1"=="/debug" (
     exit /b 0
 )
 
-start "" "%VENV%\Scripts\pythonw.exe" "%APP%" %*
+if defined UPDATE (
+    start "" "%VENV%\Scripts\pythonw.exe" "%APP%"
+) else (
+    start "" "%VENV%\Scripts\pythonw.exe" "%APP%" %*
+)
 exit /b 0

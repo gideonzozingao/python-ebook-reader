@@ -50,6 +50,7 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
                  QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
+    noteLinkRequested = Signal(str)   # a [[note:ID]] link was clicked
     book_format = "epub"
 
     def __init__(self, library: Library, prefs: Prefs, tracker: ReadingTracker):
@@ -203,6 +204,7 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
         wa = QWidgetAction(menu)
         wa.setDefaultWidget(self.appearance)
         menu.addAction(wa)
+        menu.aboutToShow.connect(self.appearance.sync)
         aa = QToolButton()
         aa.setText("Aa")
         aa.setToolTip("Appearance: theme, font, spacing")

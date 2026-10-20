@@ -13,6 +13,7 @@ from book_reader.ui.dialogs.flashcard_dialog import FlashcardDialog
 from book_reader.ui.dialogs.journal_note_dialog import JournalNoteDialog
 from book_reader.ui.dialogs.lookup_dialog import LookupDialog
 from book_reader.ui.dialogs.mindmap_dialog import MindMapDialog
+from book_reader.ui.dialogs.note_picker_dialog import NotePickerDialog
 from book_reader.ui.dialogs.summary_dialog import SummaryDialog
 from book_reader.ui.widgets.journal_panel import BookNotesPanel
 
@@ -62,6 +63,12 @@ class JournalMixin:
         self.journal.exportRequested.connect(self.export_journal)
         self.journal.reviewRequested.connect(self.review_notes)
         self.journal.mapRequested.connect(lambda: self.open_mindmap(generate=True))
+        self.journal.link_picker = self._pick_note_link
+        self.journal.linkRequested.connect(lambda url: self.noteLinkRequested.emit(url))
+
+    def _pick_note_link(self):
+        dlg = NotePickerDialog(self, self.library, self.book_id)
+        return dlg.markup if dlg.exec() else None
 
     def _journal_theme(self) -> dict:
         return THEMES[self.prefs.v["theme"]]
@@ -99,7 +106,8 @@ class JournalMixin:
         e = note_entry(row)
         dlg = JournalNoteDialog(
             self, self.library.book_note_topics(self.book_id), e["topic"], e["text"],
-            ref_text(e["chapter"], e["page"], e["total"], self.book_format), editing=True)
+            ref_text(e["chapter"], e["page"], e["total"], self.book_format), editing=True,
+            link_picker=self._pick_note_link)
         if not dlg.exec():
             return
         if dlg.deleted:
