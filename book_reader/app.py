@@ -93,7 +93,7 @@ def main():
         except Exception:
             pass
     app = QApplication(sys.argv)
-    app.setApplicationName("Book Reader")
+    app.setApplicationName("Zuqongsoft E-Book Reader")
     app.setStyle("Fusion")
     icon = ASSETS / "book_reader.ico"
     if icon.exists():
