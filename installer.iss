@@ -1,36 +1,46 @@
-; Optional: turns the folder build into a normal Windows installer.
-; 1) Run build_exe.bat   2) Install Inno Setup (jrsoftware.org)   3) Open this file and press Compile.
+#ifndef AppVersion
+  #define AppVersion "1.0"
+#endif
+
 [Setup]
-AppName=Book Reader
-AppVersion=1.0
-AppPublisher=Book Reader
-DefaultDirName={autopf}\Book Reader
-DefaultGroupName=Book Reader
-OutputBaseFilename=BookReader-Setup
+AppId={{7C3B5E52-4A1D-4F0E-9B6A-2D8E1F4C9A37}
+AppName=Zuqongsoft E-Book Reader
+AppVersion={#AppVersion}
+AppPublisher=Zuqongsoft
+DefaultDirName={autopf}\Zuqongsoft E-Book Reader
+DefaultGroupName=Zuqongsoft E-Book Reader
+DisableProgramGroupPage=yes
+OutputBaseFilename=Zuqongsoft-EBook-Reader-Setup
 OutputDir=installer
 SetupIconFile=book_reader\assets\book_reader.ico
-UninstallDisplayIcon={app}\BookReader.exe
+UninstallDisplayIcon={app}\Zuqongsoft-EBook-Reader.exe
+UninstallDisplayName=Zuqongsoft E-Book Reader
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
+CloseApplications=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "dist\BookReader\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "dist\Zuqongsoft-EBook-Reader\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\Book Reader"; Filename: "{app}\BookReader.exe"
-Name: "{autodesktop}\Book Reader"; Filename: "{app}\BookReader.exe"; Tasks: desktopicon
+Name: "{group}\Zuqongsoft E-Book Reader"; Filename: "{app}\Zuqongsoft-EBook-Reader.exe"
+Name: "{group}\Uninstall Zuqongsoft E-Book Reader"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Zuqongsoft E-Book Reader"; Filename: "{app}\Zuqongsoft-EBook-Reader.exe"; Tasks: desktopicon
 
 [Registry]
-; Adds Book Reader to the "Open with" list for books (does not change your default apps).
-Root: HKCU; Subkey: "Software\Classes\Applications\BookReader.exe\shell\open\command"; ValueType: string; ValueData: """{app}\BookReader.exe"" ""%1"""; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\.epub\OpenWithList\BookReader.exe"; ValueType: none; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\.pdf\OpenWithList\BookReader.exe"; ValueType: none; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\.md\OpenWithList\BookReader.exe"; ValueType: none; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\Zuqongsoft-EBook-Reader.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Zuqongsoft E-Book Reader"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\Zuqongsoft-EBook-Reader.exe\shell\open\command"; ValueType: string; ValueData: """{app}\Zuqongsoft-EBook-Reader.exe"" ""%1"""; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.epub\OpenWithList\Zuqongsoft-EBook-Reader.exe"; ValueType: none; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithList\Zuqongsoft-EBook-Reader.exe"; ValueType: none; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.md\OpenWithList\Zuqongsoft-EBook-Reader.exe"; ValueType: none; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\BookReader.exe"; Description: "Start Book Reader"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Zuqongsoft-EBook-Reader.exe"; Description: "Start Zuqongsoft E-Book Reader"; Flags: nowait postinstall skipifsilent

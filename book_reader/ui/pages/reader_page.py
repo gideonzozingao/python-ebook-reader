@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QLabel,
-    QMenu,
     QMessageBox,
     QSizePolicy,
     QSplitter,
@@ -20,7 +19,6 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
-    QWidgetAction,
 )
 
 from book_reader.core.books import open_text_book
@@ -38,7 +36,7 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
-from book_reader.ui.widgets.appearance_panel import AppearancePanel
+from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.epub_view import Reader
 from book_reader.ui.widgets.find_bar import FindBar
 from book_reader.ui.widgets.notes_panel import NotesPanel
@@ -50,6 +48,8 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
                  QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
+    appearanceRequested = Signal()
+    modeToggleRequested = Signal()
     noteLinkRequested = Signal(str)   # a [[note:ID]] link was clicked
     book_format = "epub"
 
@@ -72,7 +72,6 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
 
         self.reader = Reader()
         self.notes_panel = NotesPanel()
-        self.appearance = AppearancePanel(prefs)
         self._init_journal()
         self._init_bookmarks()
         self._find_query, self._find_hits, self._find_i, self._find_pos = "", [], -1, None
@@ -133,9 +132,6 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
         self.notes_panel.deleteRequested.connect(self.delete_note)
         self.notes_panel.exportRequested.connect(self.export_notes)
 
-        self._restyle = QTimer(self, singleShot=True, interval=140)
-        self._restyle.timeout.connect(self.prefsChanged.emit)
-        self.appearance.changed.connect(self._restyle.start)
         self._save_timer = QTimer(self, singleShot=True, interval=1200)
         self._save_timer.timeout.connect(self.save_position)
 
@@ -200,20 +196,8 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
         # quick highlight shortcut (no toolbar button)
         make_shortcut(self, "Ctrl+H", lambda: self.quick_highlight("Yellow"))
 
-        menu = QMenu(self)
-        wa = QWidgetAction(menu)
-        wa.setDefaultWidget(self.appearance)
-        menu.addAction(wa)
-        menu.aboutToShow.connect(self.appearance.sync)
-        aa = QToolButton()
-        aa.setText("Aa")
-        aa.setToolTip("Appearance: theme, font, spacing")
-        aa.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        aa.setMenu(menu)
-        f = aa.font()
-        f.setBold(True)
-        aa.setFont(f)
-        bar.addWidget(aa)
+        for button in appearance_buttons(self):
+            bar.addWidget(button)
         root.addWidget(bar)
 
     def toc_panel_toggle(self, on):
@@ -261,7 +245,9 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
 
     def change_font(self, delta: int):
         size = max(9, min(34, self.prefs.v["font_size"] + delta))
-        self.appearance.size_slider.setValue(size)  # updates prefs and re-renders
+        if size != self.prefs.v["font_size"]:
+            self.prefs.set("font_size", size)
+            self.prefsChanged.emit()  # the main window restyles every page
 
     # -- opening / closing -------------------------------------------------- #
 

@@ -1,8 +1,8 @@
 """Reading preferences persisted with QSettings."""
-from PySide6.QtCore import QSettings
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QFontDatabase, QGuiApplication
 
-from book_reader.themes import THEMES
+from book_reader.themes import COLOURS, ensure_theme
 
 
 class Prefs:
@@ -21,12 +21,40 @@ class Prefs:
                         pdf_zoom=0.0, pdf_invert=False,
                         show_reminder=True, daily_goal=20,
                         sync_folder="", sync_enabled=False,
-                        ui_font="", ui_font_size=10)  # pdf_zoom 0 = fit width
+                        ui_font="", ui_font_size=10,
+                        theme_mode="Light", theme_colour="Lavender", custom_accent="#6750a4")  # pdf_zoom 0 = fit width
         self.defaults = defaults
         self.v = {k: self.s.value(k, d, type=type(d)) for k, d in defaults.items()}
-        if self.v["theme"] not in THEMES:
-            self.v["theme"] = "Light"
+        if not self.s.contains("theme_mode"):  # settings saved by an older version
+            legacy = {"Light": ("Light", "Lavender"), "Dark": ("Dark", "Lavender"),
+                      "Sepia": ("Light", "Sepia"), "Forest": ("Light", "Forest"),
+                      "Midnight": ("Dark", "Midnight")}
+            mode, colour = legacy.get(str(self.v["theme"]), ("Light", "Lavender"))
+            self.v["theme_mode"], self.v["theme_colour"] = mode, colour
+            self.s.setValue("theme_mode", mode)
+            self.s.setValue("theme_colour", colour)
+        self.resolve()
+
+    @staticmethod
+    def system_is_dark() -> bool:
+        """True when the operating system is set to dark mode (Qt 6.5 or newer)."""
+        try:
+            return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+        except AttributeError:
+            return False
+
+    def is_dark(self) -> bool:
+        mode = self.v["theme_mode"]
+        return self.system_is_dark() if mode == "System" else mode == "Dark"
+
+    def resolve(self):
+        """Work out the theme name (e.g. "Ocean Dark") from mode, colour and custom accent."""
+        colour = self.v["theme_colour"] if (self.v["theme_colour"] in COLOURS
+                                            or self.v["theme_colour"] == "Custom") else "Lavender"
+        self.v["theme"] = ensure_theme(colour, self.is_dark(), str(self.v["custom_accent"]))
 
     def set(self, key, value):
         self.v[key] = value
         self.s.setValue(key, value)
+        if key in ("theme_mode", "theme_colour", "custom_accent"):
+            self.resolve()

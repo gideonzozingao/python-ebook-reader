@@ -133,3 +133,4 @@ Desktop.ini
 secrets.json
 .env.local
 .env.*.local
+installer/

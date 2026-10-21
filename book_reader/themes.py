@@ -1,37 +1,104 @@
 """Colour themes (Material Design 3 roles), highlight colours and the Qt stylesheet."""
+import colorsys
+
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 
 from book_reader.constants import DATA_DIR
 
 
-THEMES = {
-    # Material Design 3 colour roles: bg=surface, panel=surface container, fg=on-surface,
-    # muted=on-surface-variant, border=outline-variant, outline=outline, accent=primary,
-    # on_accent=on-primary, sel=secondary container, hover=state layer, desk=surface dim
-    "Light": dict(bg="#fef7ff", fg="#1d1b20", panel="#f3edf7", border="#cac4d0",
-                  outline="#79747e", accent="#6750a4", accent_hi="#7965af",
-                  on_accent="#ffffff", muted="#49454f", link="#6750a4", sel="#e8def8",
-                  hover="#ece6f0", desk="#e6e0e9"),
-    "Sepia": dict(bg="#fbf3e2", fg="#2e2111", panel="#f1e7d0", border="#d9cba8",
-                  outline="#9a8660", accent="#8a5100", accent_hi="#9e641a",
-                  on_accent="#ffffff", muted="#5f4f35", link="#8a5100", sel="#f0dcb4",
-                  hover="#ebdfc3", desk="#d8c9a5"),
-    "Forest": dict(bg="#f6fbf4", fg="#1a1c19", panel="#e9f1e6", border="#c4d4c0",
-                   outline="#6f7b6d", accent="#2e7d32", accent_hi="#3f8f43",
-                   on_accent="#ffffff", muted="#444c42", link="#2e7d32", sel="#cfe8cb",
-                   hover="#dfeadb", desk="#d5e0d1"),
-    "Dark": dict(bg="#141218", fg="#e6e0e9", panel="#211f26", border="#49454f",
-                 outline="#938f99", accent="#d0bcff", accent_hi="#dccfff",
-                 on_accent="#381e72", muted="#cac4d0", link="#d0bcff", sel="#4a4458",
-                 hover="#2b2930", desk="#0f0d13"),
+# --------------------------------------------------------------------------- #
+# Colour themes = a colour family x a mode (light / dark). Every family has both modes.
+# Palette roles (Material 3 style): bg=surface, panel=surface container, fg=on-surface,
+# muted=on-surface-variant, border=outline-variant, outline=outline, accent=primary,
+# on_accent=on-primary, sel=secondary container, hover=state layer, desk=surface dim.
+# --------------------------------------------------------------------------- #
+
+# hue (degrees), surface saturation, accent saturation; optional light-background lightness
+COLOURS = {
+    "Lavender": dict(h=262, surface=0.22, accent=0.50),
+    "Ocean": dict(h=205, surface=0.30, accent=0.75),
+    "Teal": dict(h=176, surface=0.26, accent=0.70),
+    "Forest": dict(h=128, surface=0.20, accent=0.45),
+    "Sepia": dict(h=34, surface=0.42, accent=0.72, lbg=0.945),
+    "Sunset": dict(h=14, surface=0.30, accent=0.80),
+    "Rose": dict(h=336, surface=0.28, accent=0.65),
+    "Midnight": dict(h=222, surface=0.40, accent=0.75),
+    "Graphite": dict(h=215, surface=0.05, accent=0.14),
+    "AMOLED": dict(h=262, surface=0.15, accent=0.50),
 }
+MODES = ["Light", "Dark", "System"]
 
 
-THEMES["Midnight"] = dict(
-    bg="#0f1420", fg="#dfe6f5", panel="#171e2e", border="#2c3650", outline="#8693b2",
-    accent="#8ab4ff", accent_hi="#a7c5ff", on_accent="#0b2a5e", muted="#a9b4cc",
-    link="#8ab4ff", sel="#27345a", hover="#1e2740", desk="#0a0e18")
+def _hex(h: float, s: float, l: float) -> str:
+    r, g, b = colorsys.hls_to_rgb((h % 360) / 360, max(0.0, min(1.0, l)), max(0.0, min(1.0, s)))
+    return "#{:02x}{:02x}{:02x}".format(round(r * 255), round(g * 255), round(b * 255))
+
+
+def _hls(color: str) -> tuple[float, float, float]:
+    c = QColor(color)
+    h, l, s = colorsys.rgb_to_hls(c.redF(), c.greenF(), c.blueF())
+    return h * 360, l, s
+
+
+def make_palette(name: str, dark: bool, accent: str | None = None) -> dict:
+    """Full palette for a colour family in light or dark mode. `accent` overrides the
+    primary colour (used by the Custom theme); the surfaces then follow its hue."""
+    spec = COLOURS.get(name, COLOURS["Lavender"])
+    h, ss, sa = spec["h"], spec["surface"], spec["accent"]
+    if accent:
+        h, al, sa = _hls(accent)
+        ss = min(0.35, max(0.12, sa * 0.4))
+    if dark:
+        acc = _hex(h, sa, 0.78) if not accent else _hex(h, sa, max(al, 0.70))
+        pal = dict(bg=_hex(h, ss, .075), panel=_hex(h, ss, .115), sel=_hex(h, min(.5, ss * 2.2), .22),
+                   hover=_hex(h, min(.5, ss * 1.5), .155), border=_hex(h, ss * 1.3, .25),
+                   outline=_hex(h, ss, .55), fg=_hex(h, min(ss, .15), .91),
+                   muted=_hex(h, min(ss, .12), .72), desk=_hex(h, ss, .045),
+                   accent=acc, accent_hi=_hex(h, sa, .86), on_accent=_hex(h, sa, .16))
+        if name == "AMOLED" and not accent:
+            pal.update(bg="#000000", panel="#0b0b0d", hover="#141416", border="#26262a",
+                       sel="#1f1c2b", desk="#000000", outline="#6e6a78")
+    else:
+        lb = spec.get("lbg", 0.985)
+        acc = _hex(h, sa, 0.40) if not accent else _hex(h, sa, min(al, 0.45))
+        pal = dict(bg=_hex(h, ss, lb), panel=_hex(h, ss, lb - .04), sel=_hex(h, min(.6, ss * 1.6), lb - .095),
+                   hover=_hex(h, ss * 1.2, lb - .06), border=_hex(h, ss, lb - .155),
+                   outline=_hex(h, ss * .8, .52), fg=_hex(h, .2, .11), muted=_hex(h, .1, .34),
+                   desk=_hex(h, ss, lb - .085), accent=acc, accent_hi=_hex(h, sa, .48),
+                   on_accent="#ffffff")
+        if name == "AMOLED" and not accent:
+            pal.update(bg="#ffffff", panel="#f2f2f4", hover="#e9e9ec", border="#d4d4d8",
+                       sel="#e6e1f5", desk="#e4e4e8", fg="#000000", muted="#4a4a52")
+    pal["link"] = pal["accent"]
+    return pal
+
+
+def theme_key(colour: str, dark: bool) -> str:
+    return f"{colour} {'Dark' if dark else 'Light'}"
+
+
+THEMES: dict[str, dict] = {}
+for _name in COLOURS:
+    for _dark in (False, True):
+        THEMES[theme_key(_name, _dark)] = make_palette(_name, _dark)
+# short names used by older code and saved settings
+THEMES.update({"Light": THEMES["Lavender Light"], "Dark": THEMES["Lavender Dark"],
+               "Sepia": THEMES["Sepia Light"], "Forest": THEMES["Forest Light"],
+               "Midnight": THEMES["Midnight Dark"]})
+
+
+def ensure_theme(colour: str, dark: bool, custom_accent: str = "#6750a4") -> str:
+    """Name of the theme for (colour, mode); builds the Custom one from `custom_accent`."""
+    if colour == "Custom":
+        key = theme_key("Custom", dark)
+        THEMES[key] = make_palette("Lavender", dark, accent=custom_accent)
+        return key
+    key = theme_key(colour, dark)
+    if key not in THEMES:
+        key = theme_key("Lavender", dark)
+    return key
+
 
 HIGHLIGHT_COLORS = {
     "Yellow": "#ffd54f",
@@ -166,6 +233,33 @@ QSlider::groove:horizontal {{ height: 4px; background: {t['sel']}; border-radius
 QSlider::sub-page:horizontal {{ background: {t['accent']}; border-radius: 2px; }}
 QSlider::handle:horizontal {{ background: {t['accent']}; width: 20px; height: 20px;
                               margin: -8px 0; border-radius: 10px; }}
+QPushButton#seg {{ background: transparent; color: {t['fg']}; border: none; border-radius: 0;
+                    padding: 8px 22px; min-height: 20px; font-weight: 600; }}
+QPushButton#seg:hover {{ background: {t['hover']}; }}
+QPushButton#seg:checked {{ background: {t['sel']}; color: {t['fg']}; border: none; }}
+QPushButton#segFirst {{ background: transparent; color: {t['fg']}; border: none; padding: 8px 22px;
+                       border-top-left-radius: 16px; border-bottom-left-radius: 16px; min-height: 20px;
+                       border-top-right-radius: 0; border-bottom-right-radius: 0; font-weight: 600; }}
+QPushButton#segFirst:hover {{ background: {t['hover']}; }}
+QPushButton#segFirst:checked {{ background: {t['sel']}; border: none; }}
+QPushButton#segLast {{ background: transparent; color: {t['fg']}; border: none; padding: 8px 22px;
+                      border-top-right-radius: 16px; border-bottom-right-radius: 16px; min-height: 20px;
+                      border-top-left-radius: 0; border-bottom-left-radius: 0; font-weight: 600; }}
+QPushButton#segLast:hover {{ background: {t['hover']}; }}
+QPushButton#segLast:checked {{ background: {t['sel']}; border: none; }}
+QFrame#segFrame {{ border: 1px solid {t['outline']}; border-radius: 20px; background: transparent; }}
+QToolButton#themeCard {{ background: {t['panel']}; border: 1px solid {t['border']}; border-radius: 16px;
+                        padding: 8px 8px 6px 8px; font-weight: 600; }}
+QToolButton#themeCard:hover {{ background: {t['hover']}; border-color: {t['outline']}; }}
+QToolButton#themeCard:checked {{ background: {t['sel']}; border: 2px solid {t['accent']}; padding: 7px 7px 5px 7px; }}
+QTabWidget::pane {{ border: none; background: transparent; top: -1px; }}
+QTabWidget > QWidget {{ background: transparent; }}
+QTabBar {{ background: transparent; }}
+QTabBar::tab {{ background: transparent; color: {t['muted']}; padding: 9px 18px; margin-right: 4px;
+               border: none; border-bottom: 2px solid transparent; font-weight: 600; }}
+QTabBar::tab:hover {{ background: {t['hover']}; color: {t['fg']}; border-top-left-radius: 8px;
+                     border-top-right-radius: 8px; }}
+QTabBar::tab:selected {{ color: {t['accent']}; border-bottom: 2px solid {t['accent']}; }}
 QToolTip {{ background: {t['fg']}; color: {t['bg']}; border: none; border-radius: 4px;
             padding: 6px 10px; }}
 """
