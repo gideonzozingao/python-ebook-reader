@@ -3,18 +3,14 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QAction, QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QFont, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
     QFileDialog,
-    QHBoxLayout,
     QMainWindow,
     QMessageBox,
     QProgressDialog,
-    QPushButton,
     QStackedWidget,
-    QVBoxLayout,
 )
 
 from book_reader.constants import BOOK_EXTS
@@ -25,6 +21,7 @@ from book_reader.services import backup, inbox
 from book_reader.services.notes_sync import NotesSync
 from book_reader.services.summary import SummaryBuilder, stored_highlights
 from book_reader.themes import THEMES, build_qss
+from book_reader.ui.dialogs.appearance_dialog import AppearanceDialog
 from book_reader.ui.dialogs.flashcard_dialog import FlashcardDialog
 from book_reader.ui.dialogs.mindmap_dialog import MindMapDialog
 from book_reader.ui.dialogs.notes_hub_dialog import NotesHubDialog
@@ -33,7 +30,6 @@ from book_reader.ui.dialogs.stats_dialog import StatsDialog
 from book_reader.ui.pages.library_page import LibraryPage
 from book_reader.ui.pages.pdf_page import PdfPage
 from book_reader.ui.pages.reader_page import ReaderPage
-from book_reader.ui.widgets.appearance_panel import AppearancePanel
 from book_reader.utils import folder_label
 
 
@@ -47,7 +43,7 @@ class MainWindow(QMainWindow):
         self.sync = NotesSync(self.library, self.prefs, self)
         self.library.add_listener(self.sync.schedule)
         self._qss_theme = None
-        self.setWindowTitle("Book Reader")
+        self.setWindowTitle("Zuqongsoft E-Book Reader")
         self.resize(1180, 820)
         self.setAcceptDrops(True)
 
@@ -72,10 +68,18 @@ class MainWindow(QMainWindow):
         self.library_page.mindmapRequested.connect(self.open_mindmaps)
         self.library_page.notesRequested.connect(lambda: self.open_notes_hub())
         self.library_page.prefsChanged.connect(self.on_prefs_changed)
+        self.library_page.appearanceRequested.connect(self.open_appearance)
+        self.library_page.modeToggleRequested.connect(self.toggle_mode)
+        QShortcut(QKeySequence("Ctrl+Shift+L"), self).activated.connect(self.toggle_mode)
+        hints = QGuiApplication.styleHints()
+        if hasattr(hints, "colorSchemeChanged"):
+            hints.colorSchemeChanged.connect(self._system_scheme_changed)
         QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_appearance)
         for page in (self.reader_page, self.pdf_page):
             page.backRequested.connect(self.show_library)
             page.prefsChanged.connect(self.on_prefs_changed)
+            page.appearanceRequested.connect(self.open_appearance)
+            page.modeToggleRequested.connect(self.toggle_mode)
             page.noteLinkRequested.connect(self.follow_note_link)
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(lambda: self.open_notes_hub())
 
@@ -117,23 +121,20 @@ class MainWindow(QMainWindow):
                 dlg.set_theme(theme)
 
     def open_appearance(self):
-        """Appearance settings (Ctrl+,): applies live and is remembered for every book."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Appearance")
-        lay = QVBoxLayout(dlg)
-        lay.setContentsMargins(0, 0, 0, 8)
-        panel = AppearancePanel(self.prefs)
-        panel.changed.connect(self.on_prefs_changed)
-        lay.addWidget(panel)
-        close = QPushButton("Done")
-        close.setObjectName("primary")
-        close.clicked.connect(dlg.accept)
-        row = QHBoxLayout()
-        row.setContentsMargins(16, 0, 16, 0)
-        row.addStretch()
-        row.addWidget(close)
-        lay.addLayout(row)
+        """Appearance dialog (Ctrl+, / Aa): mode, colours and fonts apply live."""
+        dlg = AppearanceDialog(self, self.prefs)
+        dlg.applied.connect(self.on_prefs_changed)
         dlg.exec()
+
+    def toggle_mode(self):
+        """Quick switch between light and dark (Ctrl+Shift+L)."""
+        self.prefs.set("theme_mode", "Light" if self.prefs.is_dark() else "Dark")
+        self.on_prefs_changed()
+
+    def _system_scheme_changed(self, *_):
+        if self.prefs.v["theme_mode"] == "System":  # follow the operating system
+            self.prefs.resolve()
+            self.on_prefs_changed()
 
     def toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
@@ -143,7 +144,7 @@ class MainWindow(QMainWindow):
     def show_library(self):
         self.reader_page.close_book()
         self.pdf_page.close_book()
-        self.setWindowTitle("Book Reader")
+        self.setWindowTitle("Zuqongsoft E-Book Reader")
         self.library_page.refresh()
         self.library_page.set_inbox_count(inbox.count_due(self.library))
         self.stack.setCurrentWidget(self.library_page)
@@ -154,7 +155,7 @@ class MainWindow(QMainWindow):
             return
         page = self.pdf_page if row["format"] == "pdf" else self.reader_page
         if page.open_book(book_id):
-            self.setWindowTitle(f"{row['title']} — Book Reader")
+            self.setWindowTitle(f"{row['title']} — Zuqongsoft E-Book Reader")
             self.stack.setCurrentWidget(page)
 
     # -- notes hub, note links, sync ---------------------------------------------- #

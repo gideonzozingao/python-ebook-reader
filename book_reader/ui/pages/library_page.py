@@ -26,14 +26,13 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
-    QWidgetAction,
 )
 
 from book_reader.constants import COVER_H, COVER_W
 from book_reader.core.library import Library
 from book_reader.services import goals
 from book_reader.ui.dialogs.subject_dialog import SubjectDialog
-from book_reader.ui.widgets.appearance_panel import AppearancePanel
+from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.cover import make_collection_tile, make_cover
 from book_reader.utils import ago, fmt_duration
 
@@ -51,6 +50,8 @@ class LibraryPage(QWidget):
     mindmapRequested = Signal(int)
     notesRequested = Signal()
     prefsChanged = Signal()   # appearance settings were changed here
+    appearanceRequested = Signal()
+    modeToggleRequested = Signal()
 
     def __init__(self, library: Library, prefs=None):
         super().__init__()
@@ -92,25 +93,7 @@ class LibraryPage(QWidget):
         add_books = QPushButton("＋  Add Books")
         add_books.setObjectName("primary")
         add_books.clicked.connect(self.addFilesRequested.emit)
-        aa = None
-        if prefs is not None:  # the same appearance panel as in the readers
-            self.appearance = AppearancePanel(prefs)
-            aa_menu = QMenu(self)
-            wa = QWidgetAction(aa_menu)
-            wa.setDefaultWidget(self.appearance)
-            aa_menu.addAction(wa)
-            aa_menu.aboutToShow.connect(self.appearance.sync)
-            aa = QToolButton()
-            aa.setText("Aa")
-            aa.setToolTip("Appearance: colour theme and fonts for the whole app (Ctrl+,)")
-            aa.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-            aa.setMenu(aa_menu)
-            bold = aa.font()
-            bold.setBold(True)
-            aa.setFont(bold)
-            self._restyle = QTimer(self, singleShot=True, interval=140)
-            self._restyle.timeout.connect(self.prefsChanged.emit)
-            self.appearance.changed.connect(self._restyle.start)
+        aa_buttons = appearance_buttons(self) if prefs is not None else []
         more = QToolButton()
         more.setText("⋯")
         more.setToolTip("Library tools: back up and restore")
@@ -129,8 +112,8 @@ class LibraryPage(QWidget):
         head.addWidget(add_folder)
         head.addWidget(add_books)
         head.addWidget(more)
-        if aa is not None:
-            head.addWidget(aa)
+        for button in aa_buttons:
+            head.addWidget(button)
         root.addLayout(head)
 
         tools = QHBoxLayout()

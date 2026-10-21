@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -18,7 +17,6 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
-    QWidgetAction,
 )
 
 from book_reader.core.library import Library
@@ -35,7 +33,7 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
-from book_reader.ui.widgets.appearance_panel import AppearancePanel
+from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.notes_panel import NotesPanel
 from book_reader.ui.widgets.pdf_view import PdfView
 from book_reader.ui.widgets.status_bar import StatusBar
@@ -44,6 +42,8 @@ from book_reader.ui.widgets.status_bar import StatusBar
 class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin, QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
+    appearanceRequested = Signal()
+    modeToggleRequested = Signal()
     noteLinkRequested = Signal(str)   # a [[note:ID]] link was clicked
     book_format = "pdf"
 
@@ -193,25 +193,9 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
         act("＋", lambda: self.view.zoom_by(1.15), None, "Zoom in (Ctrl++)")
         act("Fit width", self.view.set_fit_width, None, "Fit to width (Ctrl+0)")
 
-        self.appearance = AppearancePanel(self.prefs)
-        menu = QMenu(self)
-        wa = QWidgetAction(menu)
-        wa.setDefaultWidget(self.appearance)
-        menu.addAction(wa)
-        menu.aboutToShow.connect(self.appearance.sync)
-        aa = QToolButton()
-        aa.setText("Aa")
-        aa.setToolTip("Appearance: colour theme and fonts for the whole app (Ctrl+,)")
-        aa.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        aa.setMenu(menu)
-        bold = aa.font()
-        bold.setBold(True)
-        aa.setFont(bold)
         bar.addSeparator()
-        bar.addWidget(aa)
-        self._restyle = QTimer(self, singleShot=True, interval=140)
-        self._restyle.timeout.connect(self.prefsChanged.emit)
-        self.appearance.changed.connect(self._restyle.start)
+        for button in appearance_buttons(self):
+            bar.addWidget(button)
         root.addWidget(bar)
 
     def _build_find_bar(self, root):
