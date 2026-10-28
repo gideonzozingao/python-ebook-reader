@@ -30,6 +30,12 @@ def selftest() -> int:
         except Exception as exc:  # report every failure instead of stopping at the first
             lines.append(f"FAIL  {name}: {exc!r}")
 
+    def updater_check():
+        from book_reader import __version__
+        from book_reader.services import updater
+        assert updater.is_newer("1.10.0", "1.9.9") and not updater.is_newer("1.0.0", __version__)
+        return f"version {__version__}"
+
     def markdown_check():
         import markdown
         html = markdown.markdown("# T\n\n| a |\n|---|\n| 1 |\n\n```\ncode\n```\n- [x] done\n",
@@ -75,6 +81,7 @@ def selftest() -> int:
     check("pymupdf", pdf_check)
     check("qt svg/pdf", svg_check)
     check("book parsers", books_check)
+    check("updater", updater_check)
     check("voice dictation (optional)", lambda: "installed" if importlib.util.find_spec("speech_recognition")
           else "not installed (optional)")
     report = "\n".join(lines)

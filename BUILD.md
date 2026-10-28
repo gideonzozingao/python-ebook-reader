@@ -45,3 +45,82 @@ optional: unsigned builds work, but Windows SmartScreen and antivirus warn more 
 
 Keep keys and passwords out of the project folder and out of version control (`.gitignore`
 already excludes `sign_config.bat` and `*.pfx`). Sign after building, never before.
+
+## Publishing updates (auto-update)
+
+Book Reader checks for a newer version about 5 seconds after start-up (at most once a day, and
+only if "Check for updates automatically" is ticked in the library's **⋯** menu), or when you pick
+**⋯ → Check for updates…**. If one exists, a dialog shows what is new. **Install and restart**
+downloads the installer, verifies its SHA-256 checksum, closes the app and runs the installer
+silently; the installer upgrades in place and starts the new version. Your library is untouched.
+It only updates the *installed* Windows program; a run from source just opens the download page.
+
+**One-time setup.** Set `UPDATE_URL` in `book_reader/constants.py` (empty = feature off) to one of:
+
+* **A manifest** you host anywhere over HTTPS, e.g. `https://example.com/book-reader/latest.json`.
+* **GitHub Releases:** `https://api.github.com/repos/<owner>/<repo>/releases/latest`.
+
+**Every release.**
+
+1. Bump `__version__` in `book_reader/__init__.py` (e.g. `"1.2.0"`).
+2. Run `build_installer.bat` (it takes the version from that file) → `installer\BookReader-Setup-1.2.0.exe`.
+3. Publish it:
+   * *Manifest:* `python tools\make_manifest.py installer\BookReader-Setup-1.2.0.exe --url https://example.com/book-reader/BookReader-Setup-1.2.0.exe --notes "What is new"`,
+     then upload the installer **and** `installer\latest.json` to your server (upload `latest.json` last).
+   * *GitHub:* create a release tagged `v1.2.0`, attach the installer. Its checksum is read
+     from GitHub's asset digest, or attach the `.sha256` file that `make_manifest.py` also writes.
+     Mark it as a normal release (drafts and pre-releases are ignored).
+
+Notes: only HTTPS addresses are accepted; an installer whose checksum does not match is deleted
+and never run; releases tagged like `1.3.0-beta1` are ignored. Signing the installer
+(see "Digital signature" below) is still recommended so Windows SmartScreen trusts it.
+
+## Automated releases (GitHub Actions)
+
+`.github/workflows/release.yml` builds and publishes a release for you, using the same scripts
+as above (`build_installer.bat` -> `build_exe.bat` -> PyInstaller + Inno Setup).
+
+**To release:** bump `__version__` in `book_reader/__init__.py`, commit, then
+
+    git tag v1.2.0
+    git push origin v1.2.0
+
+The tag must equal `v` + `__version__`, otherwise the build stops with a clear message.
+
+**To try a build without releasing:** Actions tab -> *Release* -> *Run workflow*. The installer is
+kept for 30 days under the run's *Artifacts*; nothing is published.
+
+What it does, in order:
+
+1. Checks the tag against `__version__`.
+2. Points the app's `UPDATE_URL` at this repository's latest release (in the build only, nothing is
+   committed). Using other hosting? Set a repository **variable** named `UPDATE_URL`
+   (Settings -> Secrets and variables -> Actions -> Variables) to your `latest.json` address.
+3. Builds with Python 3.12, signs if a certificate is configured (below), runs the program's
+   `--self-test`, and builds the installer.
+4. Smoke-tests the installer: silent install, then the installed program's `--self-test`; then a
+   silent upgrade with the updater's switches to check that the app relaunches.
+5. (Separate job, the only one with write access.) Writes the release notes from your commits and
+   pull requests, the `.sha256` checksum and `latest.json`, and publishes the release.
+
+The installed app then finds new versions at
+`https://github.com/<owner>/<repo>/releases/latest/download/latest.json`.
+This works for **public** repositories. A private repository's releases cannot be read without a
+login, so the build leaves updates off and warns you; host `latest.json` somewhere public and set
+the `UPDATE_URL` variable instead.
+
+**Code signing (optional).** Add two repository secrets and the build signs `BookReader.exe`, the
+installer and the uninstaller through your existing `sign_file.bat` (`SIGN_METHOD=pfx`):
+
+* `WINDOWS_CERT_PFX_BASE64` - the .pfx file as text: in PowerShell run
+  `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx")) | Set-Clipboard`
+* `WINDOWS_CERT_PASSWORD` - its password
+
+Without them the build is unsigned (as it is on your PC without `sign_config.bat`). Note that public
+certificate authorities no longer issue exportable .pfx files, so this path is for self-signed or
+internal-CA certificates, which Windows SmartScreen does not trust. For public trust use a cloud
+signing service (e.g. Azure Artifact Signing, `SIGN_METHOD=azure`), which needs extra steps in the
+workflow.
+
+The action versions in the workflow (`actions/checkout@v7`, ...) are current major versions. Enable
+Dependabot for "github-actions" to be told when new ones are out.

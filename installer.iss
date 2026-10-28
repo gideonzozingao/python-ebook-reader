@@ -57,6 +57,15 @@ Root: HKA; Subkey: "Software\Classes\.markdown\OpenWithList\{#AppExe}"; ValueTyp
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+; Silent upgrade started by the app's own updater (it passes /RELAUNCH=1): start the new version.
+; Other silent installs (e.g. rolled out by IT) do not start the app.
+Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifnotsilent runasoriginaluser; Check: RelaunchRequested
+
+[Code]
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
 
 ; Your library (books, notes, settings) lives in your user folder, not here, so
 ; uninstalling or upgrading never deletes it.

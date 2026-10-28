@@ -1,30 +1,9 @@
 """Roadmap of the open book, shared by the EPUB/Markdown reader page and the PDF page."""
-from PySide6.QtCore import QThread, QTimer, Signal
+from PySide6.QtCore import QTimer
 
 from book_reader.services import roadmap as rm
+from book_reader.ui.background import Job
 from book_reader.ui.dialogs.roadmap_dialog import RoadmapDialog
-
-
-_RUNNING: set = set()   # keeps background builders alive until they finish
-
-
-class _Builder(QThread):
-    """Builds a roadmap off the UI thread (scanning headings of a big book can take seconds).
-    The service opens its own copy of the book, so the reader is never touched."""
-    built = Signal(int, object, str)    # book id, Roadmap (or None), error text
-
-    def __init__(self, book_id: int, path: str, fmt: str, title: str):
-        super().__init__()
-        self._args = (book_id, path, fmt, title)
-
-    def run(self):
-        book_id, path, fmt, title = self._args
-        try:
-            roadmap = rm.generate_roadmap(path, fmt, title)
-            rm.save_cached(book_id, path, roadmap)
-            self.built.emit(book_id, roadmap, "")
-        except Exception as exc:
-            self.built.emit(book_id, None, str(exc))
 
 
 class RoadmapMixin:
@@ -97,11 +76,16 @@ class RoadmapMixin:
                 self._roadmap_refresh(first=True)
                 return
         self._rm_dialog.set_busy("Building the roadmap…")
-        worker = _Builder(self.book_id, row["path"], row["format"], row["title"])
-        worker.built.connect(self._roadmap_built)
-        worker.finished.connect(lambda w=worker: _RUNNING.discard(w))
-        _RUNNING.add(worker)
-        worker.start()
+        book_id, path, fmt, title = self.book_id, row["path"], row["format"], row["title"]
+
+        def work(job):   # runs off the UI thread; the service opens its own copy of the book
+            roadmap = rm.generate_roadmap(path, fmt, title)
+            rm.save_cached(book_id, path, roadmap)
+            return roadmap
+
+        job = Job(self, work)   # a daemon thread: it can never keep the app from quitting
+        job.done.connect(lambda roadmap, error, bid=book_id: self._roadmap_built(bid, roadmap, error))
+        job.start()
 
     def _roadmap_built(self, book_id: int, roadmap, error: str):
         dlg = self._rm_dialog
