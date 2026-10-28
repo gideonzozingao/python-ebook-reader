@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         self.sync = NotesSync(self.library, self.prefs, self)
         self.library.add_listener(self.sync.schedule)
         self._qss_theme = None
-        self.setWindowTitle("Zuqongsoft E-Book Reader")
+        self.setWindowTitle("Book Reader")
         self.resize(1180, 820)
         self.setAcceptDrops(True)
 
@@ -144,7 +144,7 @@ class MainWindow(QMainWindow):
     def show_library(self):
         self.reader_page.close_book()
         self.pdf_page.close_book()
-        self.setWindowTitle("Zuqongsoft E-Book Reader")
+        self.setWindowTitle("Book Reader")
         self.library_page.refresh()
         self.library_page.set_inbox_count(inbox.count_due(self.library))
         self.stack.setCurrentWidget(self.library_page)
@@ -155,7 +155,7 @@ class MainWindow(QMainWindow):
             return
         page = self.pdf_page if row["format"] == "pdf" else self.reader_page
         if page.open_book(book_id):
-            self.setWindowTitle(f"{row['title']} — Zuqongsoft E-Book Reader")
+            self.setWindowTitle(f"{row['title']} — Book Reader")
             self.stack.setCurrentWidget(page)
 
     # -- notes hub, note links, sync ---------------------------------------------- #

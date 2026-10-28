@@ -19,7 +19,7 @@ class Prefs:
         defaults = dict(theme="Light", font_family=font, font_size=14,
                         line_height=160, text_width=760, justify=False,
                         pdf_zoom=0.0, pdf_invert=False,
-                        show_reminder=True, daily_goal=20,
+                        show_reminder=True, daily_goal=20, roadmap_on_open=True,
                         sync_folder="", sync_enabled=False,
                         ui_font="", ui_font_size=10,
                         theme_mode="Light", theme_colour="Lavender", custom_accent="#6750a4")  # pdf_zoom 0 = fit width

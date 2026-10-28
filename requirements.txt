@@ -2,5 +2,6 @@ PySide6-Essentials
 beautifulsoup4
 pymupdf
 markdown
-SpeechRecognition
-pyaudio
+# optional, for voice dictation in notes:
+# SpeechRecognition
+# pyaudio
