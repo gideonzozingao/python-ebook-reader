@@ -9,10 +9,7 @@ DATA_DIR = Path(os.environ.get("EPUB_READER_HOME", Path.home() / ".epub_reader")
 # with each release, or a GitHub "latest release" link such as
 #     https://api.github.com/repos/<owner>/<repo>/releases/latest
 # Leave it empty to switch the update check off (see BUILD.md, "Publishing updates").
-UPDATE_URL = os.environ.get(
-    "BOOK_READER_UPDATE_URL",
-    "https://github.com/gideonzozingao/python-ebook-reader/releases/latest/download/latest.json",
-)
+UPDATE_URL = os.environ.get("BOOK_READER_UPDATE_URL", "")
 MARKDOWN_EXTS = {".md", ".markdown", ".mdown", ".mkd"}
 BOOK_EXTS = {".epub", ".pdf"} | MARKDOWN_EXTS
 IDLE_LIMIT = 300  # seconds without input after which the reading clock pauses
