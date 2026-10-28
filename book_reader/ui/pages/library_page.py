@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from book_reader import __version__
 from book_reader.constants import COVER_H, COVER_W
 from book_reader.core.library import Library
 from book_reader.services import goals
@@ -46,6 +47,7 @@ class LibraryPage(QWidget):
     continueRequested = Signal(int)
     backupRequested = Signal()
     restoreRequested = Signal()
+    updatesRequested = Signal()
     reviewRequested = Signal(int)
     mindmapRequested = Signal(int)
     notesRequested = Signal()
@@ -96,12 +98,21 @@ class LibraryPage(QWidget):
         aa_buttons = appearance_buttons(self) if prefs is not None else []
         more = QToolButton()
         more.setText("⋯")
-        more.setToolTip("Library tools: back up and restore")
+        more.setToolTip("Library tools: back up, restore and check for updates")
         more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         more_menu = QMenu(more)
         more_menu.addAction("Back up library…").triggered.connect(lambda: self.backupRequested.emit())
         more_menu.addAction("Restore from backup…").triggered.connect(
             lambda: self.restoreRequested.emit())
+        more_menu.addSeparator()
+        more_menu.addAction("Check for updates…").triggered.connect(
+            lambda: self.updatesRequested.emit())
+        if prefs is not None:
+            auto = more_menu.addAction("Check for updates automatically")
+            auto.setCheckable(True)
+            auto.setChecked(bool(prefs.v["auto_update_check"]))
+            auto.toggled.connect(lambda on: prefs.set("auto_update_check", bool(on)))
+        more_menu.addAction(f"Book Reader {__version__}").setEnabled(False)
         more.setMenu(more_menu)
         self.btn_notes = QPushButton("📝  Notes")
         self.btn_notes.setToolTip("Search all notes, daily review inbox, dashboard, export and sync (Ctrl+Shift+F)")

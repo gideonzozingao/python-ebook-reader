@@ -7,7 +7,7 @@ Package layout
     ui/         helpers, widgets, dialogs, pages and the main window
     app.py      application entry point
 
-Formats: EPUB, PDF and Markdown (.md).
+Formats: EPUB, PDF and Markdown (.md). Appearance (light/dark/system mode, 10 colour themes + custom, interface and reading fonts) is global.
 Features: library & catalogue (subjects, tags, collections, folders), EPUB + PDF reading,
 find in book, bookmarks, highlights (PDF text selection too), dictionary look-up, book journal
 with auto section/page references, summary + export, flashcards/quizzes, reading goals and
@@ -16,3 +16,5 @@ notes dashboard, Obsidian/Notion/Anki export, sync folder, voice dictation, mind
 
 Run with:  python -m book_reader   (or: python epub_reader2.py)
 """
+
+__version__ = "1.0.0"   # bump for each release (see BUILD.md)

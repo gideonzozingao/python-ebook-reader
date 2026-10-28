@@ -1,46 +1,71 @@
+; Book Reader installer (Inno Setup 6).  Build it with build_installer.bat, or open this file in
+; the Inno Setup Compiler and press F9 (run build_exe.bat first so dist\BookReader exists).
 #ifndef AppVersion
-  #define AppVersion "1.0"
+  #define AppVersion "1.0.0"
 #endif
+#define AppName "Book Reader"
+#define AppExe "BookReader.exe"
 
 [Setup]
-AppId={{7C3B5E52-4A1D-4F0E-9B6A-2D8E1F4C9A37}
-AppName=Zuqongsoft E-Book Reader
+; Keep this GUID the same in every version: it lets a new installer upgrade the old one.
+AppId={{8B7F2C54-3D9A-4E61-A2B8-5C1E9F0D7A33}
+AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Zuqongsoft
-DefaultDirName={autopf}\Zuqongsoft E-Book Reader
-DefaultGroupName=Zuqongsoft E-Book Reader
+AppPublisher={#AppName}
+DefaultDirName={autopf}\{#AppName}
+DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-OutputBaseFilename=Zuqongsoft-EBook-Reader-Setup
 OutputDir=installer
+OutputBaseFilename=BookReader-Setup-{#AppVersion}
 SetupIconFile=book_reader\assets\book_reader.ico
-UninstallDisplayIcon={app}\Zuqongsoft-EBook-Reader.exe
-UninstallDisplayName=Zuqongsoft E-Book Reader
+UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2
 SolidCompression=yes
+WizardStyle=modern
+; Installs for the current user (no administrator prompt). Choose "Install for all users"
+; in the dialog, or change this to admin, if you want it in C:\Program Files.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
-WizardStyle=modern
 CloseApplications=yes
+RestartApplications=no
+#ifdef Sign
+; Digitally sign the installer and the uninstaller (the "bookreader" tool is passed to ISCC by
+; build_installer.bat, which calls sign_file.bat).
+SignTool=bookreader
+SignedUninstaller=yes
+SignToolRetryCount=3
+#endif
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "dist\Zuqongsoft-EBook-Reader\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "dist\BookReader\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\Zuqongsoft E-Book Reader"; Filename: "{app}\Zuqongsoft-EBook-Reader.exe"
-Name: "{group}\Uninstall Zuqongsoft E-Book Reader"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Zuqongsoft E-Book Reader"; Filename: "{app}\Zuqongsoft-EBook-Reader.exe"; Tasks: desktopicon
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
-Root: HKA; Subkey: "Software\Classes\Applications\Zuqongsoft-EBook-Reader.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Zuqongsoft E-Book Reader"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\Applications\Zuqongsoft-EBook-Reader.exe\shell\open\command"; ValueType: string; ValueData: """{app}\Zuqongsoft-EBook-Reader.exe"" ""%1"""; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\.epub\OpenWithList\Zuqongsoft-EBook-Reader.exe"; ValueType: none; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithList\Zuqongsoft-EBook-Reader.exe"; ValueType: none; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\.md\OpenWithList\Zuqongsoft-EBook-Reader.exe"; ValueType: none; Flags: uninsdeletekey
+; Adds Book Reader to the "Open with" list for books (your default apps are not changed).
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#AppName}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""
+Root: HKA; Subkey: "Software\Classes\.epub\OpenWithList\{#AppExe}"; ValueType: none; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithList\{#AppExe}"; ValueType: none; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.md\OpenWithList\{#AppExe}"; ValueType: none; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\.markdown\OpenWithList\{#AppExe}"; ValueType: none; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\Zuqongsoft-EBook-Reader.exe"; Description: "Start Zuqongsoft E-Book Reader"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent
+; Silent upgrade started by the app's own updater (it passes /RELAUNCH=1): start the new version.
+; Other silent installs (e.g. rolled out by IT) do not start the app.
+Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifnotsilent runasoriginaluser; Check: RelaunchRequested
+
+[Code]
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
+; Your library (books, notes, settings) lives in your user folder, not here, so
+; uninstalling or upgrading never deletes it.

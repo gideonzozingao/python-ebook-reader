@@ -30,6 +30,7 @@ from book_reader.ui.dialogs.stats_dialog import StatsDialog
 from book_reader.ui.pages.library_page import LibraryPage
 from book_reader.ui.pages.pdf_page import PdfPage
 from book_reader.ui.pages.reader_page import ReaderPage
+from book_reader.ui.updates import UpdateManager
 from book_reader.utils import folder_label
 
 
@@ -43,7 +44,7 @@ class MainWindow(QMainWindow):
         self.sync = NotesSync(self.library, self.prefs, self)
         self.library.add_listener(self.sync.schedule)
         self._qss_theme = None
-        self.setWindowTitle("Zuqongsoft E-Book Reader")
+        self.setWindowTitle("Book Reader")
         self.resize(1180, 820)
         self.setAcceptDrops(True)
 
@@ -64,6 +65,8 @@ class MainWindow(QMainWindow):
         self.library_page.continueRequested.connect(self.open_book)
         self.library_page.backupRequested.connect(self.backup_library)
         self.library_page.restoreRequested.connect(self.restore_library)
+        self.updates = UpdateManager(self, self.prefs)
+        self.library_page.updatesRequested.connect(self.updates.check_now)
         self.library_page.reviewRequested.connect(self.review_notes)
         self.library_page.mindmapRequested.connect(self.open_mindmaps)
         self.library_page.notesRequested.connect(lambda: self.open_notes_hub())
@@ -92,6 +95,7 @@ class MainWindow(QMainWindow):
         self.show_library()
         if self.sync.enabled():  # refresh the sync folder shortly after start-up
             QTimer.singleShot(2500, self.sync.sync_all)
+        QTimer.singleShot(5000, self.updates.check_on_startup)  # quiet, at most once a day
 
     # -- theme -------------------------------------------------------------- #
 
@@ -144,7 +148,7 @@ class MainWindow(QMainWindow):
     def show_library(self):
         self.reader_page.close_book()
         self.pdf_page.close_book()
-        self.setWindowTitle("Zuqongsoft E-Book Reader")
+        self.setWindowTitle("Book Reader")
         self.library_page.refresh()
         self.library_page.set_inbox_count(inbox.count_due(self.library))
         self.stack.setCurrentWidget(self.library_page)
@@ -155,7 +159,7 @@ class MainWindow(QMainWindow):
             return
         page = self.pdf_page if row["format"] == "pdf" else self.reader_page
         if page.open_book(book_id):
-            self.setWindowTitle(f"{row['title']} — Zuqongsoft E-Book Reader")
+            self.setWindowTitle(f"{row['title']} — Book Reader")
             self.stack.setCurrentWidget(page)
 
     # -- notes hub, note links, sync ---------------------------------------------- #
