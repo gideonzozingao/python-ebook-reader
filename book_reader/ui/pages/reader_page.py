@@ -36,6 +36,7 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
+from book_reader.ui.pages.roadmap_mixin import RoadmapMixin
 from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.epub_view import Reader
 from book_reader.ui.widgets.find_bar import FindBar
@@ -45,7 +46,7 @@ from book_reader.utils import pretty
 
 
 class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin,
-                 QWidget):
+                 RoadmapMixin, QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
     appearanceRequested = Signal()
@@ -164,6 +165,8 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
                                "Book notes filed by section and page (Ctrl+J)", True)
         act("🧠  Mind map", lambda: self.open_mindmap(), "Ctrl+M",
             "Mind maps for this book, or turn your notes into one (Ctrl+M)")
+        act("🗺  Roadmap", lambda: self.open_roadmap(), "Ctrl+R",
+            "Roadmap of this book (Ctrl+R)")
         self.act_find = act("🔍  Find", self.toggle_find, None, "Find in book (Ctrl+F)", True)
         make_shortcut(self, "Ctrl+F", self.focus_find)
         bm = QToolButton()
@@ -290,10 +293,12 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
         self.tracker.start(book_id, row["read_seconds"], self)
         self._sync_reading(row["reading"] == 1)
         self.reader.setFocus()
+        self.auto_show_roadmap()
         return True
 
     def close_book(self):
         self.close_mindmap()
+        self.close_roadmap()
         if self.act_find.isChecked():
             self.act_find.setChecked(False)
         if self.book:
@@ -333,6 +338,10 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
             bar.setValue(int(ratio * bar.maximum()))
         else:
             self.show_chapter(index, ratio=ratio)
+
+    def goto_roadmap_target(self, index: int, fragment: str):
+        """Roadmap click: open chapter `index`, scrolled to the heading `fragment`."""
+        self.show_chapter(index, fragment)
 
     def summary_highlights(self) -> list:
         return list(self.notes)

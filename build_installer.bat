@@ -2,76 +2,54 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-echo ---------------------------------------------------------------------------
-echo  Builds the Zuqongsoft E-Book Reader installer:
-echo    installer\Zuqongsoft-EBook-Reader-Setup.exe
-echo.
-echo    build_installer.bat              build the app, then the installer
-echo    build_installer.bat /skipbuild   reuse the existing dist\Zuqongsoft-EBook-Reader folder
-echo ---------------------------------------------------------------------------
-set "APPVER=1.0"
-set "SETUP=installer\Zuqongsoft-EBook-Reader-Setup.exe"
-set "APPEXE=dist\Zuqongsoft-EBook-Reader\Zuqongsoft-EBook-Reader.exe"
-set "SKIPBUILD=0"
+rem ---------------------------------------------------------------------------
+rem  Builds BookReader-Setup-<version>.exe  (one installer file you can hand out).
+rem    build_installer.bat                 version 1.0.0
+rem    build_installer.bat 1.2.0           choose the version number
+rem    build_installer.bat 1.2.0 /skipbuild   reuse the existing dist\BookReader folder
+rem  Needs Inno Setup 6 (free):  winget install JRSoftware.InnoSetup
+rem ---------------------------------------------------------------------------
+set "VER=1.0.0"
+set "SKIP=0"
 for %%A in (%*) do (
-    if /i "%%A"=="/skipbuild" set "SKIPBUILD=1"
+    if /i "%%A"=="/skipbuild" ( set "SKIP=1" ) else ( set "VER=%%A" )
 )
 
-if not exist "installer.iss" (
-    echo installer.iss was not found in this folder.
-    goto fail
-)
-
-if "%SKIPBUILD%"=="1" goto findiscc
-echo.
-echo Step 1 of 2: building the program ...
-call build_exe.bat /nopause
-if errorlevel 1 goto fail
-
-:findiscc
-if not exist "%APPEXE%" (
-    echo %APPEXE% is missing. Run without /skipbuild.
-    goto fail
-)
-
-echo.
-echo Step 2 of 2: looking for Inno Setup ...
 set "ISCC="
 if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-if not defined ISCC if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
-if not defined ISCC if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
-if not defined ISCC for /f "delims=" %%I in ('where ISCC.exe 2^>nul') do if not defined ISCC set "ISCC=%%I"
-
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 if not defined ISCC (
-    echo.
-    echo Inno Setup 6 was not found. Install it, then run this file again:
-    echo    winget install --id JRSoftware.InnoSetup -e
-    echo or download it from https://jrsoftware.org/isdl.php
-    goto fail
+    echo Inno Setup 6 was not found.
+    echo Install it with:   winget install JRSoftware.InnoSetup
+    echo or download it from https://jrsoftware.org/isdl.php  then run this file again.
+    pause
+    exit /b 1
 )
-echo Using: %ISCC%
 
-if exist "%SETUP%" del /q "%SETUP%"
-"%ISCC%" /Qp /DAppVersion=%APPVER% "installer.iss"
-if errorlevel 1 (
-    echo.
-    echo INSTALLER BUILD FAILED. Scroll up for the Inno Setup message.
-    goto fail
+if "%SKIP%"=="0" (
+    echo Step 1/2: building the program ...
+    call build_exe.bat /nopause
+    if errorlevel 1 ( echo The program build failed. & pause & exit /b 1 )
 )
-if not exist "%SETUP%" (
-    echo The installer file was not created.
-    goto fail
+if not exist "dist\BookReader\BookReader.exe" (
+    echo dist\BookReader\BookReader.exe is missing. Run build_exe.bat first.
+    pause
+    exit /b 1
 )
 
 echo.
-echo Done:  %CD%\%SETUP%
-echo Give this single file to anyone. It installs the fast folder version.
+echo Step 2/2: creating the installer (version %VER%) ...
+set "SIGNARGS="
+if exist "sign_config.bat" call "sign_config.bat"
+if defined SIGN_METHOD (
+    echo Signing is configured: the installer and uninstaller will be signed too.
+    set SIGNARGS=/DSign=1 "/Sbookreader=$q%CD%\sign_file.bat$q $f"
+)
+"%ISCC%" /Qp /DAppVersion=%VER% %SIGNARGS% installer.iss
+if errorlevel 1 ( echo. & echo INSTALLER BUILD FAILED. Scroll up for the reason. & pause & exit /b 1 )
+
+echo.
+echo Done:  %CD%\installer\BookReader-Setup-%VER%.exe
 explorer "installer"
 pause
-exit /b 0
-
-:fail
-echo.
-echo Installer was not built.
-pause
-exit /b 1

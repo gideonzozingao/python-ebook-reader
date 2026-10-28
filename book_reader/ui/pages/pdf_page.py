@@ -33,13 +33,15 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
+from book_reader.ui.pages.roadmap_mixin import RoadmapMixin
 from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.notes_panel import NotesPanel
 from book_reader.ui.widgets.pdf_view import PdfView
 from book_reader.ui.widgets.status_bar import StatusBar
 
 
-class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin, QWidget):
+class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin,
+              RoadmapMixin, QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
     appearanceRequested = Signal()
@@ -146,6 +148,8 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
                                "Book notes filed by section and page (Ctrl+J)", True)
         act("🧠  Mind map", lambda: self.open_mindmap(), "Ctrl+M",
             "Mind maps for this book, or turn your notes into one (Ctrl+M)")
+        act("🗺  Roadmap", lambda: self.open_roadmap(), "Ctrl+R",
+            "Roadmap of this book (Ctrl+R)")
         self.act_notes = act("✎  Notes", self.notes_panel.setVisible, "Ctrl+Shift+N",
                              "Highlights and notes (Ctrl+Shift+N)", True)
         self.act_select = act("⌶  Select", self.set_select_mode, "Ctrl+E",
@@ -333,12 +337,14 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
         self._sync_reading(row["reading"] == 1)
         QTimer.singleShot(0, self.view.relayout)  # re-fit once the page is shown
         QTimer.singleShot(0, self.view.setFocus)
+        self.auto_show_roadmap()
         return True
 
     def close_book(self):
         if self.doc is None:
             return
         self.close_mindmap()
+        self.close_roadmap()
         self._save_timer.stop()
         self.save_position()
         self.tracker.stop()
@@ -373,6 +379,10 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
     def jump_to_location(self, index: int, ratio: float):
         if self.doc is not None:
             self.view.scroll_to(index, ratio)
+
+    def goto_roadmap_target(self, index: int, fragment: str):
+        """Roadmap click: go to page `index` (0-based)."""
+        self.view.jump_to_page(index)
 
     # -- text selection, highlights and notes -------------------------------- #
 
