@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from book_reader import __version__
 from book_reader.constants import COVER_H, COVER_W
+from book_reader.core import features
 from book_reader.core.library import Library
 from book_reader.services import goals
 from book_reader.ui.dialogs.subject_dialog import SubjectDialog
@@ -53,6 +54,7 @@ class LibraryPage(QWidget):
     notesRequested = Signal()
     prefsChanged = Signal()   # appearance settings were changed here
     appearanceRequested = Signal()
+    settingsRequested = Signal()
     modeToggleRequested = Signal()
 
     def __init__(self, library: Library, prefs=None):
@@ -88,8 +90,8 @@ class LibraryPage(QWidget):
         self.btn_continue.setVisible(False)
         self.btn_continue.clicked.connect(
             lambda: self._continue_id and self.continueRequested.emit(self._continue_id))
-        stats = QPushButton("Reading Stats")
-        stats.clicked.connect(self.statsRequested.emit)
+        self.btn_stats = QPushButton("Reading Stats")
+        self.btn_stats.clicked.connect(self.statsRequested.emit)
         add_folder = QPushButton("Add Folder")
         add_folder.clicked.connect(self.addFolderRequested.emit)
         add_books = QPushButton("＋  Add Books")
@@ -98,20 +100,16 @@ class LibraryPage(QWidget):
         aa_buttons = appearance_buttons(self) if prefs is not None else []
         more = QToolButton()
         more.setText("⋯")
-        more.setToolTip("Library tools: back up, restore and check for updates")
+        more.setToolTip("Library tools: back up, restore, settings and updates")
         more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         more_menu = QMenu(more)
         more_menu.addAction("Back up library…").triggered.connect(lambda: self.backupRequested.emit())
         more_menu.addAction("Restore from backup…").triggered.connect(
             lambda: self.restoreRequested.emit())
         more_menu.addSeparator()
+        more_menu.addAction("Settings…").triggered.connect(lambda: self.settingsRequested.emit())
         more_menu.addAction("Check for updates…").triggered.connect(
             lambda: self.updatesRequested.emit())
-        if prefs is not None:
-            auto = more_menu.addAction("Check for updates automatically")
-            auto.setCheckable(True)
-            auto.setChecked(bool(prefs.v["auto_update_check"]))
-            auto.toggled.connect(lambda on: prefs.set("auto_update_check", bool(on)))
         more_menu.addAction(f"Book Reader {__version__}").setEnabled(False)
         more.setMenu(more_menu)
         self.btn_notes = QPushButton("📝  Notes")
@@ -119,7 +117,7 @@ class LibraryPage(QWidget):
         self.btn_notes.clicked.connect(lambda: self.notesRequested.emit())
         head.addWidget(self.btn_continue)
         head.addWidget(self.btn_notes)
-        head.addWidget(stats)
+        head.addWidget(self.btn_stats)
         head.addWidget(add_folder)
         head.addWidget(add_books)
         head.addWidget(more)
@@ -300,6 +298,12 @@ class LibraryPage(QWidget):
     def _update_subtitle(self):
         n = self.library.count()
         self.subtitle.setText(f"{n} book{'s' if n != 1 else ''}" if n else "")
+
+    def apply_features(self):
+        """Show or hide the Reading Stats button and the goal line (Settings -> Features)."""
+        stats_on = features.enabled(self.prefs, "stats")
+        self.btn_stats.setVisible(stats_on)
+        self.goal_label.setVisible(stats_on)
 
     def refresh(self):
         if not hasattr(self, "shelf"):  # called while the page is still being built
@@ -610,9 +614,11 @@ class LibraryPage(QWidget):
             menu.addAction(f"Remove from “{self.open_collection}”{suffix}").triggered.connect(
                 lambda: self._remove_from_open(ids))
         menu.addSeparator()
-        menu.addAction("Review notes (flashcards)…").triggered.connect(
-            lambda: self.reviewRequested.emit(bid))
-        menu.addAction("Mind maps…").triggered.connect(lambda: self.mindmapRequested.emit(bid))
+        if features.enabled(self.prefs, "flashcards"):
+            menu.addAction("Review notes (flashcards)…").triggered.connect(
+                lambda: self.reviewRequested.emit(bid))
+        if features.enabled(self.prefs, "mindmap"):
+            menu.addAction("Mind maps…").triggered.connect(lambda: self.mindmapRequested.emit(bid))
         menu.addSeparator()
         menu.addAction("Remove from library…").triggered.connect(
             lambda: self.removeRequested.emit(bid))

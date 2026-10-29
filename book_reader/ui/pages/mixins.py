@@ -3,6 +3,7 @@ import textwrap
 
 from PySide6.QtWidgets import QMenu, QMessageBox
 
+from book_reader.core import features
 from book_reader.services import dictionary
 from book_reader.services.export import export_summary_dialog
 from book_reader.services.journal import note_entry, ref_text
@@ -74,6 +75,10 @@ class JournalMixin:
         return THEMES[self.prefs.v["theme"]]
 
     def journal_toggle(self, on):
+        if on and not features.enabled(self.prefs, "journal"):
+            self.flash(features.off_message("journal"))
+            self.act_journal.setChecked(False)   # the Ctrl+J shortcut toggles it even when hidden
+            return
         self.journal.setVisible(bool(on))
         if on:
             self.journal.track()
@@ -153,6 +158,9 @@ class JournalMixin:
         """Flashcards / quizzes from this book's notes and highlights."""
         if self.book_id is None:
             return
+        if not features.enabled(self.prefs, "flashcards"):
+            self.flash(features.off_message("flashcards"))
+            return
         builder = self._summary_builder()
         if not builder.entries():
             self.flash("Add some notes or highlights first, then review them")
@@ -223,6 +231,9 @@ class LookupMixin:
     """
 
     def lookup_text(self, text: str):
+        if not features.enabled(self.prefs, "lookup"):
+            self.flash(features.off_message("lookup"))
+            return
         term = dictionary.clean_term(text)
         if not term:
             self.flash("Select a word or phrase first, then look it up")
@@ -250,6 +261,9 @@ class MindMapMixin:
 
     def open_mindmap(self, generate: bool = False):
         if self.book_id is None:
+            return
+        if not features.enabled(self.prefs, "mindmap"):
+            self.flash(features.off_message("mindmap"))
             return
         dlg = self._mm_dialog
         if dlg is not None and dlg.book_id == self.book_id:

@@ -1,6 +1,7 @@
 """Roadmap of the open book, shared by the EPUB/Markdown reader page and the PDF page."""
 from PySide6.QtCore import QTimer
 
+from book_reader.core import features
 from book_reader.services import roadmap as rm
 from book_reader.ui.background import Job
 from book_reader.ui.dialogs.roadmap_dialog import RoadmapDialog
@@ -23,6 +24,9 @@ class RoadmapMixin:
 
     def open_roadmap(self, rebuild: bool = False):
         if self.book_id is None:
+            return
+        if not features.enabled(self.prefs, "roadmap"):
+            self.flash(features.off_message("roadmap"))
             return
         dlg = self._rm_dialog
         if dlg is None or dlg.book_id != self.book_id:
@@ -57,7 +61,8 @@ class RoadmapMixin:
 
     def auto_show_roadmap(self):
         """Call at the end of open_book: show the roadmap for a book that is just starting."""
-        if self.book_id is None or not self.prefs.v["roadmap_on_open"]:
+        if (self.book_id is None or not self.prefs.v["roadmap_on_open"]
+                or not features.enabled(self.prefs, "roadmap")):
             return
         row = self.library.get(self.book_id)
         if row is not None and (row["progress"] or 0) < self.ROADMAP_AUTO_BELOW:

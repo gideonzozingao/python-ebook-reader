@@ -2,6 +2,7 @@
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 
+from book_reader.core.features import DEFAULTS as FEATURE_DEFAULTS
 from book_reader.themes import COLOURS, ensure_theme
 
 
@@ -23,7 +24,8 @@ class Prefs:
                         auto_update_check=True, last_update_check=0.0, skipped_version="",
                         sync_folder="", sync_enabled=False,
                         ui_font="", ui_font_size=10,
-                        theme_mode="Light", theme_colour="Lavender", custom_accent="#6750a4")  # pdf_zoom 0 = fit width
+                        theme_mode="Light", theme_colour="Lavender", custom_accent="#6750a4",
+                        last_backup="", **FEATURE_DEFAULTS)  # pdf_zoom 0 = fit width
         self.defaults = defaults
         self.v = {k: self.s.value(k, d, type=type(d)) for k, d in defaults.items()}
         if not self.s.contains("theme_mode"):  # settings saved by an older version

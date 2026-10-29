@@ -112,6 +112,7 @@ class BookNotesPanel(QWidget):
         lay.setContentsMargins(14, 14, 8, 10)
         lay.setSpacing(8)
 
+        self._head_buttons: dict = {}
         head = QHBoxLayout()
         title = QLabel("Book notes")
         title.setObjectName("h2")
@@ -129,6 +130,7 @@ class BookNotesPanel(QWidget):
             b.setToolTip(tip)
             b.clicked.connect(lambda _=False, s=sig: s.emit())
             head.addWidget(b)
+            self._head_buttons[text] = b
         lay.addLayout(head)
 
         row = QHBoxLayout()
@@ -202,6 +204,11 @@ class BookNotesPanel(QWidget):
         lay.addWidget(self.scroll, 1)
 
     # -- book / location ----------------------------------------------------- #
+
+    def set_features(self, review: bool, mindmap: bool):
+        """Show the Review and Map buttons only when those features are switched on."""
+        self._head_buttons["Review"].setVisible(review)
+        self._head_buttons["Map"].setVisible(mindmap)
 
     def set_book(self, fmt: str, provider):
         self.fmt, self.provider = fmt, provider

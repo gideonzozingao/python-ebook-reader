@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from book_reader.core import features
 from book_reader.core.books import open_text_book
 from book_reader.core.epub import EpubBook
 from book_reader.core.library import Library
@@ -50,6 +51,7 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
     backRequested = Signal()
     prefsChanged = Signal()
     appearanceRequested = Signal()
+    settingsRequested = Signal()
     modeToggleRequested = Signal()
     noteLinkRequested = Signal(str)   # a [[note:ID]] link was clicked
     book_format = "epub"
@@ -163,10 +165,10 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
                              "Notes & highlights (Ctrl+Shift+N)", True)
         self.act_journal = act("📓  Journal", self.journal_toggle, "Ctrl+J",
                                "Book notes filed by section and page (Ctrl+J)", True)
-        act("🧠  Mind map", lambda: self.open_mindmap(), "Ctrl+M",
-            "Mind maps for this book, or turn your notes into one (Ctrl+M)")
-        act("🗺  Roadmap", lambda: self.open_roadmap(), "Ctrl+R",
-            "Roadmap of this book (Ctrl+R)")
+        self.act_mindmap = act("🧠  Mind map", lambda: self.open_mindmap(), "Ctrl+M",
+                               "Mind maps for this book, or turn your notes into one (Ctrl+M)")
+        self.act_roadmap = act("🗺  Roadmap", lambda: self.open_roadmap(), "Ctrl+R",
+                               "Roadmap of this book (Ctrl+R)")
         self.act_find = act("🔍  Find", self.toggle_find, None, "Find in book (Ctrl+F)", True)
         make_shortcut(self, "Ctrl+F", self.focus_find)
         bm = QToolButton()
@@ -453,6 +455,21 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
                                  f"chapter {self.spine_index + 1} / {n}")
         if not self.journal.isHidden():
             self.journal.track()
+
+    def apply_features(self):
+        """Show or hide the optional features according to Settings (also blocks their shortcuts)."""
+        on = lambda name: features.enabled(self.prefs, name)
+        for action, name in ((self.act_mindmap, "mindmap"), (self.act_roadmap, "roadmap"),
+                             (self.act_journal, "journal")):
+            action.setVisible(on(name))
+            action.setEnabled(on(name))
+        if not on("journal"):
+            self.act_journal.setChecked(False)   # closes the journal panel
+        if not on("roadmap"):
+            self.close_roadmap()
+        if not on("mindmap"):
+            self.close_mindmap()
+        self.journal.set_features(review=on("flashcards"), mindmap=on("mindmap"))
 
     def flash(self, text):
         self.status.left.setText(text)

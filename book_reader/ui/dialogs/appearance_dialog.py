@@ -1,4 +1,4 @@
-"""Appearance dialog (Ctrl+, or the Aa button): changes apply live."""
+"""Quick Appearance dialog (the Aa button): changes apply live. Settings has the same panel."""
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QVBoxLayout
 

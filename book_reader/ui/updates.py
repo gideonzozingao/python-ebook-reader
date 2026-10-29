@@ -3,7 +3,7 @@
 Nothing is ever installed without the user clicking "Install and restart"."""
 import time
 
-from PySide6.QtCore import QObject, Qt, QTimer, QUrl
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -17,6 +17,8 @@ CHECK_EVERY = 24 * 3600   # seconds between automatic checks
 
 
 class UpdateManager(QObject):
+    checked = Signal()   # a check finished (found something, nothing, or failed)
+
     def __init__(self, window, prefs):
         super().__init__(window)
         self.win, self.prefs = window, prefs
@@ -59,6 +61,12 @@ class UpdateManager(QObject):
         self._job.start()
 
     def _checked(self, info, error: str):
+        try:
+            self._handle_check(info, error)
+        finally:
+            self.checked.emit()
+
+    def _handle_check(self, info, error: str):
         self._job = None
         manual = self._manual
         if manual:

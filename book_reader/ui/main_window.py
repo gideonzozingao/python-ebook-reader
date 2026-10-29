@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from book_reader.constants import BOOK_EXTS
+from book_reader.core import features
 from book_reader.core.library import Library
 from book_reader.core.prefs import Prefs
 from book_reader.core.tracker import ReadingTracker
@@ -30,6 +31,7 @@ from book_reader.ui.dialogs.stats_dialog import StatsDialog
 from book_reader.ui.pages.library_page import LibraryPage
 from book_reader.ui.pages.pdf_page import PdfPage
 from book_reader.ui.pages.reader_page import ReaderPage
+from book_reader.ui.pages.settings_page import SettingsPage
 from book_reader.ui.updates import UpdateManager
 from book_reader.utils import folder_label
 
@@ -52,9 +54,12 @@ class MainWindow(QMainWindow):
         self.library_page = LibraryPage(self.library, self.prefs)
         self.reader_page = ReaderPage(self.library, self.prefs, self.tracker)
         self.pdf_page = PdfPage(self.library, self.prefs, self.tracker)
+        self.settings_page = SettingsPage(self.library, self.prefs)
+        self._settings_return = None   # the page Settings was opened from
         self.stack.addWidget(self.library_page)
         self.stack.addWidget(self.reader_page)
         self.stack.addWidget(self.pdf_page)
+        self.stack.addWidget(self.settings_page)
         self.setCentralWidget(self.stack)
 
         self.library_page.openRequested.connect(self.open_book)
@@ -67,6 +72,13 @@ class MainWindow(QMainWindow):
         self.library_page.restoreRequested.connect(self.restore_library)
         self.updates = UpdateManager(self, self.prefs)
         self.library_page.updatesRequested.connect(self.updates.check_now)
+        self.settings_page.backRequested.connect(self.close_settings)
+        self.settings_page.prefsChanged.connect(self.on_prefs_changed)
+        self.settings_page.backupRequested.connect(self.backup_library)
+        self.settings_page.restoreRequested.connect(self.restore_library)
+        self.settings_page.updatesRequested.connect(self.updates.check_now)
+        self.updates.checked.connect(self.settings_page.refresh)
+        self.library_page.settingsRequested.connect(self.open_settings)
         self.library_page.reviewRequested.connect(self.review_notes)
         self.library_page.mindmapRequested.connect(self.open_mindmaps)
         self.library_page.notesRequested.connect(lambda: self.open_notes_hub())
@@ -77,11 +89,12 @@ class MainWindow(QMainWindow):
         hints = QGuiApplication.styleHints()
         if hasattr(hints, "colorSchemeChanged"):
             hints.colorSchemeChanged.connect(self._system_scheme_changed)
-        QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_appearance)
+        QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_settings)
         for page in (self.reader_page, self.pdf_page):
             page.backRequested.connect(self.show_library)
             page.prefsChanged.connect(self.on_prefs_changed)
             page.appearanceRequested.connect(self.open_appearance)
+            page.settingsRequested.connect(self.open_settings)
             page.modeToggleRequested.connect(self.toggle_mode)
             page.noteLinkRequested.connect(self.follow_note_link)
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(lambda: self.open_notes_hub())
@@ -92,6 +105,7 @@ class MainWindow(QMainWindow):
         self.addAction(fs)
 
         self.apply_theme()
+        self.apply_features()
         self.show_library()
         if self.sync.enabled():  # refresh the sync folder shortly after start-up
             QTimer.singleShot(2500, self.sync.sync_all)
@@ -117,15 +131,55 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         self.reader_page.apply_style()
         self.pdf_page.apply_style()
+        self.apply_features()
         self.library_page.refresh()
         theme = THEMES[self.prefs.v["theme"]]
+        self.settings_page.set_theme(theme)
         for dlg in (self.reader_page._mm_dialog, self.pdf_page._mm_dialog,
                     getattr(self, "_mm_dialog", None)):
             if dlg is not None:
                 dlg.set_theme(theme)
 
+    def apply_features(self):
+        """Show or hide the optional features everywhere (Settings -> Features)."""
+        for page in (self.reader_page, self.pdf_page, self.library_page):
+            page.apply_features()
+
+    # -- settings ------------------------------------------------------------- #
+
+    def open_settings(self, section: str | None = None):
+        """Settings page (Ctrl+, / the gear). Sits on top of an open book; Back returns to it."""
+        if self.stack.currentWidget() is not self.settings_page:
+            self._settings_return = self.stack.currentWidget()
+        self.settings_page.refresh()
+        if section:
+            self.settings_page.show_section(section)
+        self.stack.setCurrentWidget(self.settings_page)
+
+    def close_settings(self):
+        target = self._settings_return or self.library_page
+        if target is self.library_page:
+            self.library_page.refresh()
+        self.stack.setCurrentWidget(target)
+        self._settings_return = None
+
+    def _notify(self, text: str):
+        """A short message on whichever page is showing."""
+        if self.stack.currentWidget() is self.settings_page:
+            self.settings_page.refresh()
+            self.settings_page.show_message(text)
+        else:
+            self.library_page.show_message(text)
+
+    def _flush_open_book(self):
+        """Save an open book's position and reading time without leaving the current page."""
+        for page in (self.reader_page, self.pdf_page):
+            if page.book_id is not None:
+                page.save_position()
+        self.tracker.flush()
+
     def open_appearance(self):
-        """Appearance dialog (Ctrl+, / Aa): mode, colours and fonts apply live."""
+        """Quick Appearance dialog (the Aa button): mode, colours and fonts apply live."""
         dlg = AppearanceDialog(self, self.prefs)
         dlg.applied.connect(self.on_prefs_changed)
         dlg.exec()
@@ -207,6 +261,9 @@ class MainWindow(QMainWindow):
                              index=row["spine_index"] or 0, pos=row["scroll_ratio"] or 0.0))
 
     def show_stats(self):
+        if not features.enabled(self.prefs, "stats"):
+            self._notify(features.off_message("stats"))
+            return
         StatsDialog(self, self.library, self.prefs).exec()
         self.library_page.refresh()  # goal / streak line
 
@@ -261,7 +318,10 @@ class MainWindow(QMainWindow):
             return
         if not path.lower().endswith(".zip"):
             path += ".zip"
-        self.show_library()  # saves the position and time of an open book first
+        if self.stack.currentWidget() is self.settings_page:
+            self._flush_open_book()   # stay on the Settings page
+        else:
+            self.show_library()  # saves the position and time of an open book first
         dlg = self._progress("Backing up library…")
         try:
             info = backup.create_backup(self.library, Path(path),
@@ -271,7 +331,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Backup failed", str(exc))
             return
         dlg.close()
-        self.library_page.show_message(f"Backup saved · {info['books']} book(s)")
+        self.prefs.set("last_backup", datetime.now().strftime("%Y-%m-%d %H:%M"))
+        self._notify(f"Backup saved · {info['books']} book(s)")
 
     def restore_library(self):
         path, _ = QFileDialog.getOpenFileName(self, "Restore from backup", str(Path.home()),
@@ -305,6 +366,9 @@ class MainWindow(QMainWindow):
 
     def open_mindmaps(self, book_id: int):
         """Mind maps for a book that is not open (no jumping to the text)."""
+        if not features.enabled(self.prefs, "mindmap"):
+            self._notify(features.off_message("mindmap"))
+            return
         row = self.library.get(book_id)
         if row is None:
             return
@@ -322,6 +386,9 @@ class MainWindow(QMainWindow):
 
     def review_notes(self, book_id: int):
         """Flashcards / quizzes for a book that is not open."""
+        if not features.enabled(self.prefs, "flashcards"):
+            self._notify(features.off_message("flashcards"))
+            return
         row = self.library.get(book_id)
         if row is None:
             return
