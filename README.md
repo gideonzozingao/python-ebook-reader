@@ -1,0 +1,1 @@
+[![Release](https://github.com/gideonzozingao/python-ebook-reader/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/gideonzozingao/python-ebook-reader/actions/workflows/release.yml)
