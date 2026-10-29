@@ -1,0 +1,9 @@
+# Shown on the "New issue" page next to the Bug report and Feature request forms.
+blank_issues_enabled: true
+contact_links:
+  - name: Download the latest version
+    url: https://github.com/gideonzozingao/python-ebook-reader/releases/latest
+    about: Installers for Windows, Linux and macOS. Please check the latest version before reporting a bug.
+  - name: Installation help (README)
+    url: https://github.com/gideonzozingao/python-ebook-reader#download-and-install
+    about: Install steps for each platform, including the SmartScreen and macOS "Open" prompts.

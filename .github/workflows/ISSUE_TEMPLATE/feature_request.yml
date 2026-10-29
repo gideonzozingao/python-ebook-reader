@@ -1,0 +1,55 @@
+name: Feature request
+description: Suggest an idea or improvement for Book Reader
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the idea! A short description of the problem it solves helps most.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you are trying to do and what makes it hard today.
+      placeholder: "When I read on a laptop at night, the white pages are too bright..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      placeholder: "A dark / night reading mode that..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      multiple: true
+      options:
+        - Reading (EPUB / PDF / Markdown)
+        - Library
+        - Notes
+        - Reading clock / goals
+        - Voice dictation
+        - Installing / updating
+        - Other
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you have tried
+    validations:
+      required: false
+
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to help build it?
+      options:
+        - "No, just suggesting"
+        - "Yes, I can test a beta"
+        - "Yes, I'd like to contribute code"

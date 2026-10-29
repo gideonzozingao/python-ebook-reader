@@ -1,0 +1,115 @@
+name: Bug report
+description: Something in Book Reader doesn't work as it should
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem! Please check the
+        [open issues](https://github.com/gideonzozingao/python-ebook-reader/issues) first,
+        in case it has already been reported.
+
+  - type: input
+    id: version
+    attributes:
+      label: Book Reader version
+      description: Shown in the app's About dialog, or in the installer / package file name.
+      placeholder: "e.g. 1.1.2 or 1.2.0-beta.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (Ubuntu / Debian)
+        - Linux (other)
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Windows installer (BookReader-Setup-....exe)
+        - Linux package (.tar.gz + install.sh)
+        - macOS disk image (.dmg)
+        - Running from source (python epub_reader2.py)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      multiple: true
+      options:
+        - Opening / reading EPUB
+        - Opening / reading PDF
+        - Opening / reading Markdown
+        - Library and covers
+        - Notes and note review
+        - Reading clock / daily goal
+        - Voice dictation
+        - Updates / installer
+        - Other
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, and what went wrong? Screenshots help a lot.
+      placeholder: |
+        1. Open the book "..."
+        2. Click on "..."
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: book
+    attributes:
+      label: About the book (if the problem is with one book)
+      description: >
+        Format, roughly how big it is, and where it came from. Only attach the file if it is
+        free to share; never attach purchased or copyrighted books.
+
+  - type: textarea
+    id: selftest
+    attributes:
+      label: Self-test output (optional)
+      description: |
+        Run the program with `--self-test` and paste the result:
+        - Windows: `"%LOCALAPPDATA%\Programs\Book Reader\BookReader.exe" --self-test`, then open `%USERPROFILE%\.epub_reader\selftest.txt`
+        - Linux: `book-reader --self-test`
+        - macOS: `/Applications/BookReader.app/Contents/MacOS/BookReader --self-test`
+      render: text
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or logs (optional)
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this hasn't been reported yet.
+          required: true
+        - label: I'm using the latest version (or this happens in the latest version too).
