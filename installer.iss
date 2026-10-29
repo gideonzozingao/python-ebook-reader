@@ -67,5 +67,5 @@ begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
-; Your library (books, notes, settings) lives in your user folder, not here, so
-; uninstalling or upgrading never deletes it.
+// Your library (books, notes, settings) lives in your user folder, not here, so
+// uninstalling or upgrading never deletes it.
