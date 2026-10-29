@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Builds Book Reader with PyInstaller on Linux or macOS (on Windows use build_exe.bat).
+#
+#   bash build_exe.sh
+#
+# Result:  Linux -> dist/BookReader/BookReader        macOS -> dist/BookReader.app
+# Uses the virtual environment in $VENV (default: .venv next to this file), creating it if needed.
+#
+# Choose the build tool with BUILDER:
+#   BUILDER=pyinstaller  (default) bundles Python bytecode; builds in a minute or two
+#   BUILDER=nuitka       compiles the code to C and then to machine code; builds take much longer
+#                        and need a C compiler (gcc on Linux, Xcode command line tools on macOS)
+set -euo pipefail
+cd "$(dirname "$0")"
+
+VENV="${VENV:-.venv}"
+PY="${PYTHON:-python3}"
+BUILDER="${BUILDER:-pyinstaller}"
+case "$BUILDER" in
+  pyinstaller|nuitka) ;;
+  *) echo "BUILDER must be pyinstaller or nuitka, got: $BUILDER" >&2; exit 1 ;;
+esac
+
+echo "Step 1/2: building the program with $BUILDER ..."
+if [ ! -x "$VENV/bin/python" ]; then
+  echo "Creating the build environment in $VENV ..."
+  "$PY" -m venv "$VENV"
+fi
+VPY="$VENV/bin/python"
+
+echo "Installing build requirements ..."
+"$VPY" -m pip install --upgrade pip
+# Pillow turns book_reader.ico into the macOS .icns icon and the Linux menu icon (build time only).
+"$VPY" -m pip install -r requirements.txt pillow
+if [ "$BUILDER" = "nuitka" ]; then
+  "$VPY" -m pip install nuitka
+  # Nuitka uses patchelf to fix library paths on Linux; the pip package ships the program.
+  if [ "$(uname -s)" = "Linux" ] && ! command -v patchelf >/dev/null 2>&1; then
+    "$VPY" -m pip install patchelf
+  fi
+  echo "Compiling with Nuitka. This takes a while (often 10-30 minutes) ..."
+  rm -rf dist/BookReader dist/BookReader.app
+  # the venv's bin folder on PATH, so Nuitka finds the pip-installed patchelf
+  PATH="$(cd "$VENV/bin" && pwd):$PATH" "$VPY" tools/build_nuitka.py
+else
+  "$VPY" -m pip install pyinstaller
+  echo "Building. This takes a few minutes ..."
+  "$VPY" -m PyInstaller --noconfirm --clean BookReader.spec
+fi
+
+case "$(uname -s)" in
+  Darwin) APP_EXE="dist/BookReader.app/Contents/MacOS/BookReader" ;;
+  *)      APP_EXE="dist/BookReader/BookReader" ;;
+esac
+if [ ! -x "$APP_EXE" ]; then
+  echo "BUILD FAILED: $APP_EXE was not produced. Scroll up for the reason."
+  exit 1
+fi
+
+echo "Step 2/2: checking the packaged program (self-test) ..."
+TEST_HOME="$(mktemp -d)"
+set +e
+# offscreen = no screen needed, so this also works on build servers
+EPUB_READER_HOME="$TEST_HOME" QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}" "$APP_EXE" --self-test
+rc=$?
+set -e
+cat "$TEST_HOME/selftest.txt" 2>/dev/null || true
+rm -rf "$TEST_HOME"
+if [ "$rc" -ne 0 ]; then
+  echo "SELF-TEST FAILED (exit code $rc)."
+  exit 1
+fi
+
+echo "Done: $APP_EXE"
