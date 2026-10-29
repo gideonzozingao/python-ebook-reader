@@ -8,7 +8,9 @@ Usage (from the build environment's Python, with nuitka installed):
     python tools/build_nuitka.py
 Environment switch: BR_CONSOLE=1 keeps a console window (Windows) for debugging.
 A C compiler is needed: gcc on Linux, clang (Xcode command line tools) on macOS,
-MSVC or MinGW on Windows (Nuitka offers to download MinGW).
+Visual Studio Build Tools (with the Windows SDK) or MinGW on Windows. On Windows, other gcc
+installs on PATH (MSYS2, Cygwin) are ignored, so Nuitka uses Visual Studio or downloads its own
+MinGW, and the Visual C++ runtime DLLs are added to the build if Nuitka left them out.
 """
 from __future__ import annotations
 
@@ -98,6 +100,67 @@ def finish_mac_bundle(app: Path, version: str) -> None:
     subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
 
 
+def find_vc_redist() -> Path | None:
+    """Folder with the Visual C++ runtime DLLs (Microsoft.VC14x.CRT) from Visual Studio."""
+    roots = []
+    if os.environ.get("VCToolsRedistDir"):            # set by vcvars64.bat / developer shell
+        roots.append(Path(os.environ["VCToolsRedistDir"]))
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                   "Microsoft Visual Studio", "Installer", "vswhere.exe")
+    if vswhere.exists():
+        out = subprocess.run(
+            [str(vswhere), "-latest", "-products", "*", "-requires",
+             "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+            capture_output=True, text=True).stdout.strip()
+        if out:
+            # newest version folder first
+            roots += sorted(Path(out, "VC", "Redist", "MSVC").glob("*"), reverse=True)
+    for root in roots:
+        for crt in sorted(root.glob("x64/Microsoft.VC*.CRT"), reverse=True):
+            if (crt / "msvcp140.dll").exists():
+                return crt
+    return None
+
+
+def bundle_vc_runtime(target: Path) -> None:
+    """Copies the Visual C++ runtime DLLs next to BookReader.exe if Nuitka left them out, so the
+    program also starts on PCs without the "Visual C++ Redistributable" installed. Microsoft
+    allows shipping these files with applications."""
+    if (target / "msvcp140.dll").exists():
+        print("Visual C++ runtime: already in the build.")
+        return
+    crt = find_vc_redist()
+    if crt is None:
+        print("WARNING: msvcp140.dll is not in the build and no Visual Studio copy was found. "
+              "The program needs the Visual C++ Redistributable on the PC that runs it.")
+        return
+    copied = []
+    for dll in crt.glob("*.dll"):
+        if not (target / dll.name).exists():
+            shutil.copy2(dll, target / dll.name)
+            copied.append(dll.name)
+    print("Added the Visual C++ runtime from", crt, ":", ", ".join(sorted(copied)))
+
+
+def build_env() -> dict:
+    """Environment for Nuitka. On Windows, hides gcc from other toolchains."""
+    env = os.environ.copy()
+    if IS_WIN:
+        # A gcc from another toolchain on PATH (MSYS2, Cygwin, ...) may lack the Windows SDK
+        # headers ("windows.h: No such file"), and Nuitka would try it first. Hide it for this
+        # build only, so Nuitka uses Visual Studio if installed, or else its own MinGW.
+        keep, hidden = [], []
+        for d in env.get("PATH", "").split(os.pathsep):
+            if d and (Path(d) / "gcc.exe").exists():
+                hidden.append(d)
+            else:
+                keep.append(d)
+        env["PATH"] = os.pathsep.join(keep)
+        for d in hidden:
+            print("Not using the gcc in", d, "(Nuitka uses Visual Studio or its own MinGW)")
+    return env
+
+
 def main() -> int:
     os.chdir(ROOT)
     version = read_version()
@@ -109,7 +172,9 @@ def main() -> int:
         sys.executable, "-m", "nuitka", "epub_reader2.py",
         "--standalone",
         "--enable-plugin=pyside6",
-        "--include-qt-plugins=platforms,svg",
+        # SVG support is not its own plugin family: the SVG image reader is in "imageformats"
+        # and the SVG icon engine in "iconengines".
+        "--include-qt-plugins=platforms,imageformats,iconengines",
         "--noinclude-qt-translations",
         "--include-package=book_reader",
         "--include-data-dir=book_reader/assets=book_reader/assets",
@@ -121,6 +186,10 @@ def main() -> int:
         "--output-filename=BookReader",
         f"--output-dir={OUT}",
         "--assume-yes-for-downloads",
+        # PyMuPDF's generated pymupdf/mupdf.py becomes ~2.4 million lines of C; compiled in
+        # parallel with other files it exhausts the compiler's memory ("C1002: out of heap
+        # space"). Fewer parallel jobs and leaner compiler settings avoid that.
+        "--low-memory",
         "--show-progress" if os.environ.get("CI") else "--quiet",
     ]
     if IS_WIN:
@@ -144,9 +213,10 @@ def main() -> int:
             f"--macos-app-icon={make_icns(work)}",
         ]
 
+    env = build_env()
     print("Nuitka build of Book Reader", version)
     print(" ".join(cmd), flush=True)
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, env=env)
 
     DIST.mkdir(exist_ok=True)
     if IS_MAC:
@@ -161,6 +231,8 @@ def main() -> int:
     shutil.move(str(built), str(target))
     if IS_MAC:
         finish_mac_bundle(target, version)
+    if IS_WIN:
+        bundle_vc_runtime(target)
 
     print("Nuitka build done:", target)
     return 0

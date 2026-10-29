@@ -10,10 +10,10 @@
 #   Test build:   Actions tab -> "Release" -> Run workflow  (builds all three and keeps them as
 #                 downloadable artifacts, publishes nothing)
 #
-# Build tool for Linux and macOS: PyInstaller (default, bundles Python bytecode) or Nuitka
+# Build tool for all three platforms: PyInstaller (default, bundles Python bytecode) or Nuitka
 # (compiles the code to C and then to machine code). Pick it in "Run workflow", or for tag
 # releases set the repository variable BUILDER to "nuitka" (Settings -> Secrets and variables ->
-# Actions -> Variables). The Windows build always uses build_installer.bat (PyInstaller).
+# Actions -> Variables). build_exe.bat and build_exe.sh read BUILDER from the environment.
 #
 # One-time setup and optional code signing: see BUILD.md, "Automated releases (GitHub Actions)".
 name: Release
@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       builder:
-        description: "Linux/macOS build tool (nuitka compiles to machine code, takes longer)"
+        description: "Build tool (nuitka compiles to machine code and takes much longer)"
         type: choice
         options: [pyinstaller, nuitka]
         default: pyinstaller
@@ -49,7 +49,7 @@ jobs:
   build:
     name: Build Windows installer
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90           # Nuitka compiles take much longer than PyInstaller builds
     outputs:
       version: ${{ steps.ver.outputs.version }}
 
@@ -141,9 +141,10 @@ jobs:
           choco install innosetup --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Could not install Inno Setup' }
 
-      # Your own script does the work: PyInstaller build, signing, the program's --self-test,
-      # then the Inno Setup installer. /nopause = do not wait for a key press.
-      - name: Build the program and the installer
+      # Your own script does the work: PyInstaller or Nuitka build (from BUILDER), signing, the
+      # program's --self-test, then the Inno Setup installer. /nopause = do not wait for a key.
+      # Nuitka uses the Visual Studio C compiler that is preinstalled on GitHub's Windows runners.
+      - name: Build the program (${{ env.BUILDER }}) and the installer
         shell: cmd
         run: |
           call build_installer.bat ${{ steps.ver.outputs.version }} /nopause
