@@ -28,6 +28,8 @@ console = os.environ.get("BR_CONSOLE") == "1"
 
 with open("book_reader/__init__.py", encoding="utf-8") as f:
     VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', f.read()).group(1)
+# macOS bundle versions must be plain numbers: 1.2.3-beta.4 -> 1.2.3
+NUM_VERSION = VERSION.split("-", 1)[0]
 
 datas = [("book_reader/assets", "book_reader/assets")]
 binaries, hiddenimports = [], ["PySide6.QtSvg", "bs4", "html.parser"]
@@ -87,11 +89,11 @@ if IS_MAC:
         name="BookReader.app",
         icon=ICON,
         bundle_identifier="io.github.gideonzozingao.bookreader",
-        version=VERSION,
+        version=NUM_VERSION,
         info_plist={
             "CFBundleDisplayName": "Book Reader",
-            "CFBundleShortVersionString": VERSION,
-            "CFBundleVersion": VERSION,
+            "CFBundleShortVersionString": NUM_VERSION,
+            "CFBundleVersion": NUM_VERSION,
             "NSHighResolutionCapable": True,
             "LSApplicationCategoryType": "public.app-category.books",
             "CFBundleDocumentTypes": [

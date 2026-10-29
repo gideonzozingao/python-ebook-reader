@@ -43,10 +43,15 @@ NOT_NEEDED = ["numpy", "onnxruntime", "scipy", "pandas", "matplotlib", "PIL", "I
 
 def read_version() -> str:
     text = (ROOT / "book_reader" / "__init__.py").read_text(encoding="utf-8")
-    m = re.search(r'__version__\s*=\s*"(\d+(?:\.\d+){1,3})"', text)
+    m = re.search(r'__version__\s*=\s*"(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)"', text)
     if not m:
-        sys.exit('Could not read a plain numeric __version__ from book_reader/__init__.py')
+        sys.exit('__version__ in book_reader/__init__.py must look like "1.2.3" or "1.2.3-beta.4"')
     return m.group(1)
+
+
+def numeric(version: str) -> str:
+    """1.2.3-beta.4 -> 1.2.3: Windows file versions and macOS bundle versions are numbers only."""
+    return version.split("-", 1)[0]
 
 
 def make_icns(work: Path) -> Path:
@@ -83,8 +88,8 @@ def finish_mac_bundle(app: Path, version: str) -> None:
         "CFBundleIdentifier": BUNDLE_ID,
         "CFBundleName": "BookReader",
         "CFBundleDisplayName": "Book Reader",
-        "CFBundleShortVersionString": version,
-        "CFBundleVersion": version,
+        "CFBundleShortVersionString": numeric(version),
+        "CFBundleVersion": numeric(version),
         "NSHighResolutionCapable": True,
         "LSApplicationCategoryType": "public.app-category.books",
         "CFBundleDocumentTypes": [
@@ -198,8 +203,8 @@ def main() -> int:
             f"--windows-icon-from-ico={ICON_ICO}",
             "--company-name=Book Reader",
             "--product-name=Book Reader",
-            f"--file-version={version}",
-            f"--product-version={version}",
+            f"--file-version={numeric(version)}",
+            f"--product-version={numeric(version)}",
             "--file-description=Book Reader",
         ]
     if IS_MAC:
@@ -208,7 +213,7 @@ def main() -> int:
             "--macos-create-app-bundle",
             "--macos-app-mode=gui",
             "--macos-app-name=Book Reader",
-            f"--macos-app-version={version}",
+            f"--macos-app-version={numeric(version)}",
             f"--macos-signed-app-name={BUNDLE_ID}",
             f"--macos-app-icon={make_icns(work)}",
         ]

@@ -30,21 +30,17 @@ VPY="$VENV/bin/python"
 
 echo "Installing build requirements ..."
 "$VPY" -m pip install --upgrade pip
-# Pillow turns book_reader.ico into the macOS .icns icon and the Linux menu icon (build time only).
-"$VPY" -m pip install -r requirements.txt pillow
+# Same requirement files as build.ps1 on Windows (they add Pillow for the icons, and Nuitka's
+# patchelf on Linux).
+if [ "$BUILDER" = "nuitka" ]; then REQS=requirements-build-nuitka.txt; else REQS=requirements-build.txt; fi
+"$VPY" -m pip install -r "$REQS"
 if [ "$BUILDER" = "nuitka" ]; then
-  "$VPY" -m pip install nuitka
-  # Nuitka uses patchelf to fix library paths on Linux; the pip package ships the program.
-  if [ "$(uname -s)" = "Linux" ] && ! command -v patchelf >/dev/null 2>&1; then
-    "$VPY" -m pip install patchelf
-  fi
   echo "Compiling with Nuitka. This takes a while (often 10-30 minutes) ..."
   rm -rf dist/BookReader dist/BookReader.app
   # the venv's bin folder on PATH, so Nuitka finds the pip-installed patchelf
   PATH="$(cd "$VENV/bin" && pwd):$PATH" "$VPY" tools/build_nuitka.py
 else
-  "$VPY" -m pip install pyinstaller
-  echo "Building. This takes a few minutes ..."
+  echo "Building with PyInstaller. This takes a few minutes ..."
   "$VPY" -m PyInstaller --noconfirm --clean BookReader.spec
 fi
 

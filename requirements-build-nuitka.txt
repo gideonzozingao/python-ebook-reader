@@ -1,0 +1,6 @@
+-r requirements.txt
+nuitka
+# makes the macOS .icns icon and the Linux menu icon
+pillow
+# Nuitka fixes library paths with patchelf on Linux
+patchelf; sys_platform == "linux"

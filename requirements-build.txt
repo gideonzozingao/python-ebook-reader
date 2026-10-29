@@ -1,0 +1,4 @@
+-r requirements.txt
+pyinstaller
+# lets PyInstaller turn the .ico into the macOS .icns icon; makes the Linux menu icon
+pillow

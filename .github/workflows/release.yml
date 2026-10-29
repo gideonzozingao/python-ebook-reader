@@ -1,99 +1,148 @@
-# Builds Book Reader for Windows, Linux and macOS, tests each build, and publishes them as one
-# GitHub Release together with the files the Windows auto-updater reads (latest.json + .sha256).
+name: Release
+
+# release.yml - builds Book Reader for Windows, Linux and macOS and publishes a GitHub release.
 #
-#   Windows: build_installer.bat -> build_exe.bat -> PyInstaller + Inno Setup  -> Setup .exe
-#   Linux:   build_exe.sh + tools/package_linux.sh                             -> .tar.gz
-#   macOS:   build_exe.sh + tools/package_macos.sh                             -> .dmg
+# Ways to publish:
+#  1. Actions tab -> Release -> Run workflow: pick bump (patch/minor/major), channel
+#     (stable/beta) and compiler. The version is bumped, committed, tagged, built and published.
+#  2. Push a tag yourself (book_reader/__init__.py must already contain that version):
+#        git tag v1.2.0 && git push origin v1.2.0
+#  3. Rolling beta: every push to main (direct commit or merged PR) publishes the next beta
+#     (1.2.0-beta.1, -beta.2, ...). Turn this off with the repository variable AUTO_BETA=false.
 #
-#   Release:      bump __version__ in book_reader/__init__.py, commit, then
-#                     git tag v1.2.0 && git push origin v1.2.0
-#   Test build:   Actions tab -> "Release" -> Run workflow  (builds all three and keeps them as
-#                 downloadable artifacts, publishes nothing)
+# Installed Windows apps read the update feed of their channel:
+#     https://github.com/<owner>/<repo>/releases/download/update-feed/stable.json  (or beta.json)
+# The "update-feed" release is created automatically; do not delete it.
 #
 # A release needs the Windows build to pass; Linux and macOS packages are attached when their
 # builds pass too (otherwise the release is published without them, with a warning).
 #
-# Build tool for all three platforms: PyInstaller (default, bundles Python bytecode) or Nuitka
-# (compiles the code to C and then to machine code). Pick it in "Run workflow", or for tag
-# releases set the repository variable BUILDER to "nuitka" (Settings -> Secrets and variables ->
-# Actions -> Variables). build_exe.bat and build_exe.sh read BUILDER from the environment.
-#
-# One-time setup and optional code signing: see BUILD.md, "Automated releases (GitHub Actions)".
-name: Release
+# Because the workflow commits the version bump to main, run "git pull" before working locally.
+# Optional signing: repository secrets WINDOWS_CERT_PFX_BASE64 and WINDOWS_CERT_PASSWORD.
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
     inputs:
-      builder:
-        description: "Build tool (nuitka compiles to machine code and takes much longer)"
+      bump:
+        description: "Version bump"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      channel:
+        description: "Release channel"
+        type: choice
+        options: [stable, beta]
+        default: stable
+      compiler:
+        description: "Build with (nuitka compiles to machine code and takes much longer)"
         type: choice
         options: [pyinstaller, nuitka]
         default: pyinstaller
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
-# Least privilege: the build jobs (which run pip packages and your build scripts) can only read.
-# Only the small publish job at the bottom gets write access.
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   PYTHON_VERSION: "3.12"
-  # Run workflow -> the choice made there; tag push -> repository variable BUILDER, else pyinstaller
-  BUILDER: ${{ inputs.builder || vars.BUILDER || 'pyinstaller' }}
+  # Run workflow -> the choice made there; pushes -> repository variable BUILDER, else pyinstaller
+  BUILDER: ${{ inputs.compiler || vars.BUILDER || 'pyinstaller' }}
 
 jobs:
-  # ---------------------------------------------------------------------------------- Windows
-  build:
-    name: Build Windows installer
-    runs-on: windows-latest
-    timeout-minutes: 90           # Nuitka compiles take much longer than PyInstaller builds
+  # ------------------------------------------------------------------------------- Version
+  prepare:
+    name: Prepare version
+    runs-on: ubuntu-latest
+    if: >-
+      ${{ !contains(github.event.head_commit.message, '[skip ci]') &&
+          (github.event_name != 'push' || github.ref_type == 'tag' || vars.AUTO_BETA != 'false') }}
+    permissions:
+      contents: write          # commits the version bump and pushes the tag
     outputs:
-      version: ${{ steps.ver.outputs.version }}
-
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      channel: ${{ steps.v.outputs.channel }}
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
+          # Branch tip (not the triggering SHA) so queued runs see the previous bump commit
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - id: v
+        name: Bump, commit and tag (or check the pushed tag)
+        env:
+          BUMP: ${{ inputs.bump || 'patch' }}
+          CHANNEL: ${{ inputs.channel || 'beta' }}     # push to main => rolling beta
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            code="$(python scripts/bump_version.py --show)"
+            if [[ "$code" != "$version" ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match __version__ ($code) in book_reader/__init__.py"
+              exit 1
+            fi
+          else
+            version="$(python scripts/bump_version.py "$BUMP" "$CHANNEL")"
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -am "Release v$version [skip ci]"
+            git tag "v$version"
+            git push origin "HEAD:$GITHUB_REF_NAME" "v$version"
+          fi
+          if [[ "$version" == *-* ]]; then pre=true; channel=beta; else pre=false; channel=stable; fi
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "prerelease=$pre"
+            echo "channel=$channel"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $version (channel=$channel, prerelease=$pre, compiler=$BUILDER)"
+
+  # ------------------------------------------------------------------------------- Windows
+  windows:
+    name: Build Windows installer
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build*.txt
 
-      # The app, the installer file name and the updater all rely on this one number.
-      - name: Read the version (and make sure the tag matches it)
-        id: ver
-        shell: pwsh
-        run: |
-          $text = Get-Content -Raw book_reader/__init__.py
-          $m = [regex]::Match($text, '__version__\s*=\s*"(\d+(?:\.\d+){1,3})"')
-          if (-not $m.Success) {
-            throw 'Could not read a plain numeric __version__ (like "1.2.0") from book_reader/__init__.py'
-          }
-          $ver = $m.Groups[1].Value
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$ver") {
-            throw "The tag $($env:GITHUB_REF_NAME) does not match __version__ $ver. Bump book_reader/__init__.py, or tag v$ver."
-          }
-          "version=$ver" >> $env:GITHUB_OUTPUT
-          Write-Host "Building Book Reader $ver"
-
-      # constants.UPDATE_URL is empty in the source. For the Windows release build, point it at this
-      # repository's latest release (or at the repository variable UPDATE_URL if you host updates
-      # elsewhere). Only the build workspace is changed; nothing is committed.
-      # (The Linux and macOS builds leave it empty: the updater installs Windows setup files.)
-      - name: Point the app at this repository's updates
+      # constants.UPDATE_URL is empty in the source. Point this build at its channel's update
+      # feed (or at the repository variable UPDATE_URL if you host updates elsewhere).
+      - name: Point the app at the ${{ needs.prepare.outputs.channel }} update feed
         shell: pwsh
         env:
-          UPDATE_URL: ${{ vars.UPDATE_URL || format('https://github.com/{0}/releases/latest/download/latest.json', github.repository) }}
+          UPDATE_URL: ${{ vars.UPDATE_URL || format('https://github.com/{0}/releases/download/update-feed/{1}.json', github.repository, needs.prepare.outputs.channel) }}
           CUSTOM_URL: ${{ vars.UPDATE_URL }}
           REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
@@ -110,12 +159,6 @@ jobs:
           Set-Content -Path $path -Value ($src.Replace($old, $new)) -NoNewline -Encoding utf8
           Write-Host "The app will look for updates at: $env:UPDATE_URL"
 
-      # build_exe.bat uses C:\venv\epub when it exists, so creating it here pins the Python version
-      # instead of letting the script pick whichever Python it finds first.
-      - name: Create the build environment
-        shell: cmd
-        run: python -m venv C:\venv\epub
-
       # Optional. With no secrets the build is simply unsigned (sign_file.bat skips signing).
       - name: Prepare code signing (optional)
         shell: pwsh
@@ -129,53 +172,35 @@ jobs:
           }
           $pfx = Join-Path $env:RUNNER_TEMP 'signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
-          # sign_file.bat and build_installer.bat read these (same names as sign_config.example.bat)
-          "SIGN_METHOD=pfx"            >> $env:GITHUB_ENV
-          "SIGN_PFX=$pfx"              >> $env:GITHUB_ENV
+          "SIGN_METHOD=pfx"                 >> $env:GITHUB_ENV
+          "SIGN_PFX=$pfx"                   >> $env:GITHUB_ENV
           "SIGN_PASSWORD=$env:PFX_PASSWORD" >> $env:GITHUB_ENV
           Write-Host 'Signing is on: BookReader.exe, the installer and the uninstaller will be signed.'
 
-      - name: Make sure Inno Setup 6 is installed
+      - name: Install Inno Setup
         shell: pwsh
         run: |
           $paths = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
-          $found = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if ($found) { Write-Host "Inno Setup found: $found"; exit 0 }
-          choco install innosetup --yes --no-progress
+          if ($paths | Where-Object { Test-Path $_ }) { Write-Host 'Inno Setup already installed'; exit 0 }
+          choco install innosetup -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Could not install Inno Setup' }
 
-      # Your own script does the work: PyInstaller or Nuitka build (from BUILDER), signing, the
-      # program's --self-test, then the Inno Setup installer. /nopause = do not wait for a key.
-      # Nuitka uses the Visual Studio C compiler that is preinstalled on GitHub's Windows runners.
+      # build.ps1 does the work: PyInstaller or Nuitka, signing, the program's --self-test, then
+      # the Inno Setup installer and its .sha256. Nuitka uses the runner's Visual Studio compiler.
       - name: Build the program (${{ env.BUILDER }}) and the installer
-        shell: cmd
-        run: |
-          call build_installer.bat ${{ steps.ver.outputs.version }} /nopause
-          if errorlevel 1 exit /b 1
-
-      - name: Check the installer
         shell: pwsh
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          $f = "installer/BookReader-Setup-$env:VERSION.exe"
-          if (-not (Test-Path $f)) { throw "$f was not produced" }
-          $item = Get-Item $f
-          Write-Host ("{0}  {1:N1} MB" -f $item.Name, ($item.Length / 1MB))
-          if ($env:SIGN_METHOD) {
-            $sig = Get-AuthenticodeSignature $f
-            Write-Host "Signature status: $($sig.Status)"
-            if (-not $sig.SignerCertificate) { throw 'Signing was configured but the installer is not signed' }
-          }
-          "SETUP_EXE=$((Resolve-Path $f).Path)"                      >> $env:GITHUB_ENV
-          "TEST_DIR=$(Join-Path $env:RUNNER_TEMP 'BookReaderTest')"  >> $env:GITHUB_ENV
+        run: ./build.ps1 -Compiler $env:BUILDER -Python python
 
       - name: Smoke test - install silently, run the installed program's self-test
         shell: pwsh
         run: |
-          $p = Start-Process $env:SETUP_EXE -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$env:TEST_DIR" -Wait -PassThru
+          $setup = (Resolve-Path "installer/BookReader-Setup-$env:VERSION.exe").Path
+          $dir = Join-Path $env:RUNNER_TEMP 'BookReaderTest'
+          "SETUP_EXE=$setup" >> $env:GITHUB_ENV
+          "TEST_DIR=$dir"    >> $env:GITHUB_ENV
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$dir" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "The installer exited with code $($p.ExitCode)" }
-          $exe = Join-Path $env:TEST_DIR 'BookReader.exe'
+          $exe = Join-Path $dir 'BookReader.exe'
           if (-not (Test-Path $exe)) { throw 'BookReader.exe was not installed' }
           $data = Join-Path $env:RUNNER_TEMP 'br-data'
           $env:EPUB_READER_HOME = $data
@@ -183,11 +208,8 @@ jobs:
           Get-Content (Join-Path $data 'selftest.txt') -ErrorAction SilentlyContinue | Write-Host
           if ($t.ExitCode -ne 0) { throw 'The self-test of the installed program failed' }
 
-      # Checks the "installer.iss" relaunch rule used by the in-app updater: a plain silent install
-      # must NOT start the app, the updater's switches (/RELAUNCH=1) must. This runs a real
-      # upgrade-over-the-top, so it is the closest thing to what users will do.
-      # continue-on-error: it needs a desktop session on the runner; once you have seen it pass,
-      # delete that line to make it a hard check.
+      # Checks the installer.iss relaunch rule used by the in-app updater. Needs a desktop
+      # session on the runner, hence continue-on-error; delete that line once you've seen it pass.
       - name: Smoke test - the updater's silent upgrade relaunches the app
         continue-on-error: true
         shell: pwsh
@@ -212,72 +234,52 @@ jobs:
         shell: pwsh
         run: Remove-Item (Join-Path $env:RUNNER_TEMP 'signing.pfx') -Force -ErrorAction SilentlyContinue
 
-      - name: Keep the installer
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
-          name: BookReader-Setup-${{ steps.ver.outputs.version }}
-          path: installer/BookReader-Setup-${{ steps.ver.outputs.version }}.exe
+          name: BookReader-Setup-${{ needs.prepare.outputs.version }}
+          path: |
+            installer/BookReader-Setup-${{ needs.prepare.outputs.version }}.exe
+            installer/BookReader-Setup-${{ needs.prepare.outputs.version }}.exe.sha256
           if-no-files-found: error
           retention-days: 30
 
-  # ------------------------------------------------------------------------------------ Linux
-  build-linux:
+  # ------------------------------------------------------------------------------- Linux
+  linux:
     name: Build Linux package
-    # Built on the oldest Ubuntu runner on purpose: a program built against an older system
-    # library (glibc) also runs on newer distributions, but not the other way round.
-    # If GitHub retires this runner image, switch to ubuntu-24.04.
+    needs: prepare
+    # Oldest Ubuntu runner on purpose: built against an older glibc, the program also runs on
+    # newer distributions. If GitHub retires this image, switch to ubuntu-24.04.
     runs-on: ubuntu-22.04
-    timeout-minutes: 90           # Nuitka compiles take much longer than PyInstaller builds
+    timeout-minutes: 90
     env:
+      VERSION: ${{ needs.prepare.outputs.version }}
       QT_QPA_PLATFORM: offscreen   # run the self-tests without a screen
-      PACKAGE_SCRIPT: tools/package_linux.sh
-      EXTRA_FILES: packaging/linux/install.sh packaging/linux/book-reader.desktop
-
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.tag }}
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      # Fails early, with a list, if a script this job needs was never committed.
-      - name: Check that the build scripts are in the repository
+      - name: Check that the build files are in the repository
         run: |
           missing=0
-          for f in build_exe.sh BookReader.spec ${{ env.PACKAGE_SCRIPT }} ${{ env.EXTRA_FILES }}; do
+          for f in build_exe.sh BookReader.spec requirements-build.txt requirements-build-nuitka.txt \
+                   tools/package_linux.sh packaging/linux/install.sh packaging/linux/book-reader.desktop; do
             if [ ! -f "$f" ]; then echo "::error::Missing from the repository: $f"; missing=1; fi
           done
           if [ "$BUILDER" = "nuitka" ] && [ ! -f tools/build_nuitka.py ]; then
             echo "::error::Missing from the repository: tools/build_nuitka.py"; missing=1
           fi
-          if [ "$missing" = 1 ]; then
-            echo "Commit and push the files above (git add ... && git commit && git push), then start a NEW run."
-            exit 1
-          fi
+          [ "$missing" = 0 ] || { echo "Commit and push the files above, then start a NEW run."; exit 1; }
 
-      # The app, the package file name and the release all rely on this one number.
-      - name: Read the version (and make sure the tag matches it)
-        id: ver
-        run: |
-          ver="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([0-9]+(\.[0-9]+){1,3})".*/\1/p' book_reader/__init__.py | head -n 1)"
-          if [ -z "$ver" ]; then
-            echo '::error::Could not read a plain numeric __version__ (like "1.2.0") from book_reader/__init__.py'
-            exit 1
-          fi
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$ver" ]; then
-            echo "::error::The tag $GITHUB_REF_NAME does not match __version__ $ver. Bump book_reader/__init__.py, or tag v$ver."
-            exit 1
-          fi
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "Building Book Reader $ver"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build*.txt
 
-      # System libraries Qt needs to start (offscreen) for the self-test.
       - name: Install Qt's system libraries
         run: |
           sudo apt-get update
@@ -289,19 +291,15 @@ jobs:
         run: bash build_exe.sh
 
       - name: Make the .tar.gz package
-        run: bash tools/package_linux.sh "${{ steps.ver.outputs.version }}"
+        run: bash tools/package_linux.sh "$VERSION"
 
-      # Unpacks the download, runs install.sh into a scratch home folder, runs the installed
-      # program's self-test, then checks that uninstalling cleans up.
       - name: Smoke test - unpack, install, self-test, uninstall
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
           T="$RUNNER_TEMP/br-linux"
           rm -rf "$T"; mkdir -p "$T/home"
-          tar -xzf installer/BookReader-$VERSION-linux-*.tar.gz -C "$T"
-          PKG="$(echo "$T"/BookReader-$VERSION-linux-*)"
+          tar -xzf installer/BookReader-"$VERSION"-linux-*.tar.gz -C "$T"
+          PKG="$(echo "$T"/BookReader-"$VERSION"-linux-*)"
           HOME="$T/home" XDG_DATA_HOME="$T/home/.local/share" bash "$PKG/install.sh"
           APP="$T/home/.local/share/BookReader"
           test -x "$APP/BookReader"
@@ -312,81 +310,57 @@ jobs:
           test ! -e "$APP"
           echo "OK: install, self-test and uninstall all work."
 
-      - name: Keep the package
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
-          name: BookReader-${{ steps.ver.outputs.version }}-linux
-          path: installer/BookReader-${{ steps.ver.outputs.version }}-linux-*.tar.gz
+          name: BookReader-${{ needs.prepare.outputs.version }}-linux
+          path: installer/BookReader-${{ needs.prepare.outputs.version }}-linux-*.tar.gz
           if-no-files-found: error
           retention-days: 30
 
-  # ------------------------------------------------------------------------------------ macOS
-  build-macos:
+  # ------------------------------------------------------------------------------- macOS
+  macos:
     name: Build macOS disk image
-    # macos-latest runs on Apple Silicon, so this build is for M1/M2/M3/... Macs (arm64).
-    runs-on: macos-latest
-    timeout-minutes: 90           # Nuitka compiles take much longer than PyInstaller builds
+    needs: prepare
+    runs-on: macos-latest      # Apple Silicon (arm64)
+    timeout-minutes: 90
     env:
-      PACKAGE_SCRIPT: tools/package_macos.sh
-      EXTRA_FILES: ""
-
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.tag }}
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      # Fails early, with a list, if a script this job needs was never committed.
-      - name: Check that the build scripts are in the repository
+      - name: Check that the build files are in the repository
         run: |
           missing=0
-          for f in build_exe.sh BookReader.spec ${{ env.PACKAGE_SCRIPT }} ${{ env.EXTRA_FILES }}; do
+          for f in build_exe.sh BookReader.spec requirements-build.txt requirements-build-nuitka.txt \
+                   tools/package_macos.sh; do
             if [ ! -f "$f" ]; then echo "::error::Missing from the repository: $f"; missing=1; fi
           done
           if [ "$BUILDER" = "nuitka" ] && [ ! -f tools/build_nuitka.py ]; then
             echo "::error::Missing from the repository: tools/build_nuitka.py"; missing=1
           fi
-          if [ "$missing" = 1 ]; then
-            echo "Commit and push the files above (git add ... && git commit && git push), then start a NEW run."
-            exit 1
-          fi
+          [ "$missing" = 0 ] || { echo "Commit and push the files above, then start a NEW run."; exit 1; }
 
-      # The app, the package file name and the release all rely on this one number.
-      - name: Read the version (and make sure the tag matches it)
-        id: ver
-        run: |
-          ver="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([0-9]+(\.[0-9]+){1,3})".*/\1/p' book_reader/__init__.py | head -n 1)"
-          if [ -z "$ver" ]; then
-            echo '::error::Could not read a plain numeric __version__ (like "1.2.0") from book_reader/__init__.py'
-            exit 1
-          fi
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$ver" ]; then
-            echo "::error::The tag $GITHUB_REF_NAME does not match __version__ $ver. Bump book_reader/__init__.py, or tag v$ver."
-            exit 1
-          fi
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "Building Book Reader $ver"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build*.txt
 
       - name: Build the program (${{ env.BUILDER }} + self-test)
         run: bash build_exe.sh
 
       - name: Make the .dmg
-        run: bash tools/package_macos.sh "${{ steps.ver.outputs.version }}"
+        run: bash tools/package_macos.sh "$VERSION"
 
-      # Opens the disk image the way a user would, copies the app out, runs its self-test.
       - name: Smoke test - open the .dmg, copy the app out, self-test
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          DMG="$(ls installer/BookReader-$VERSION-macos-*.dmg)"
+          DMG="$(ls installer/BookReader-"$VERSION"-macos-*.dmg)"
           MNT="$(mktemp -d)"
           hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MNT"
           rm -rf "$RUNNER_TEMP/BookReader.app"
@@ -400,38 +374,33 @@ jobs:
           cat "$D/selftest.txt" 2>/dev/null || true
           echo "OK: the app from the disk image runs."
 
-      - name: Keep the disk image
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
-          name: BookReader-${{ steps.ver.outputs.version }}-macos
-          path: installer/BookReader-${{ steps.ver.outputs.version }}-macos-*.dmg
+          name: BookReader-${{ needs.prepare.outputs.version }}-macos
+          path: installer/BookReader-${{ needs.prepare.outputs.version }}-macos-*.dmg
           if-no-files-found: error
           retention-days: 30
 
-  # ------------------------------------------------------------------------------------ Publish
-  # Only for tags. Waits for all three builds, but only the Windows one is required (the
-  # in-app updater depends on it): Linux and macOS packages are attached when their builds
-  # passed, and a failure there shows as a warning instead of holding back the release.
-  # Needs no Windows and no third-party code: it takes the files built above, writes checksums
-  # and the update manifest, and publishes the release.
-  release:
+  # ------------------------------------------------------------------------------- Publish
+  publish:
     name: Publish GitHub release
-    needs: [build, build-linux, build-macos]
-    if: always() && github.ref_type == 'tag' && needs.build.result == 'success'
+    needs: [prepare, windows, linux, macos]
+    if: ${{ always() && needs.prepare.result == 'success' && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: write
     env:
-      VERSION: ${{ needs.build.outputs.version }}
-      TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.tag }}
           persist-credentials: false
 
       - name: Download the Windows, Linux and macOS builds
@@ -443,23 +412,21 @@ jobs:
 
       - name: List what will be published
         env:
-          LINUX_RESULT: ${{ needs.build-linux.result }}
-          MACOS_RESULT: ${{ needs.build-macos.result }}
+          LINUX_RESULT: ${{ needs.linux.result }}
+          MACOS_RESULT: ${{ needs.macos.result }}
         run: |
           ls -lh installer
           [ "$LINUX_RESULT" = "success" ] || echo "::warning::The Linux build did not pass ($LINUX_RESULT); this release has no Linux package."
           [ "$MACOS_RESULT" = "success" ] || echo "::warning::The macOS build did not pass ($MACOS_RESULT); this release has no macOS disk image."
 
       # GitHub writes the "what's new" list from the commits and pull requests since the last tag.
-      # The same text goes on the release page and into the update dialog inside the app.
       - name: Write the release notes
         run: |
           gh api --method POST "repos/$GH_REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body > notes.md || true
           [ -s notes.md ] || echo "Book Reader $VERSION" > notes.md
 
-      # latest.json (what the Windows app's updater reads) + BookReader-Setup-x.y.z.exe.sha256.
-      # make_manifest.py also refuses to continue if the installer's version != __version__.
-      - name: Write the checksum and update manifest
+      # latest.json: the update manifest the Windows app reads (+ the installer's .sha256).
+      - name: Write the update manifest
         run: |
           python3 tools/make_manifest.py "installer/BookReader-Setup-$VERSION.exe" \
             --url "https://github.com/$GH_REPO/releases/download/$TAG/BookReader-Setup-$VERSION.exe" \
@@ -476,9 +443,7 @@ jobs:
             cat "$f.sha256"
           done
 
-      # Install hints for the release page only (latest.json above already has the plain notes,
-      # so the Windows update dialog does not show them).
-      # Only lists the downloads that are actually attached to this release.
+      # Install hints for the release page only, listing what is actually attached.
       - name: Add download notes to the release page
         run: |
           shopt -s nullglob
@@ -486,6 +451,10 @@ jobs:
           macos=(installer/BookReader-"$VERSION"-macos-*.dmg)
           {
             echo
+            if [ "$PRERELEASE" = "true" ]; then
+              echo "> **Beta.** Installs of this version are offered the next betas and stable releases."
+              echo
+            fi
             echo "### Downloads"
             echo "- **Windows:** \`BookReader-Setup-$VERSION.exe\` - run it and follow the steps. Installed copies update themselves."
             if [ ${#linux[@]} -gt 0 ]; then
@@ -499,8 +468,8 @@ jobs:
           } >> notes.md
           cat notes.md
 
-      # Created as a draft, filled, then published, so the "latest release" address never points
-      # at a release that is still missing its files.
+      # Created as a draft, filled, then published, so a release is never visible without its
+      # files. Only stable releases become "Latest" (old installs still read latest.json there).
       - name: Publish the release
         run: |
           shopt -s nullglob
@@ -508,9 +477,28 @@ jobs:
                  installer/BookReader-"$VERSION"-linux-*.tar.gz installer/BookReader-"$VERSION"-macos-*.dmg \
                  installer/*.sha256)
           printf 'Uploading %s\n' "${files[@]}"
+          pre=(); [ "$PRERELEASE" = "true" ] && pre=(--prerelease)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${files[@]}" --clobber
           else
-            gh release create "$TAG" "${files[@]}" --draft --verify-tag --title "Book Reader $VERSION" --notes-file notes.md
+            gh release create "$TAG" "${files[@]}" --draft --verify-tag "${pre[@]}" \
+              --title "Book Reader $VERSION" --notes-file notes.md
           fi
-          gh release edit "$TAG" --draft=false --latest
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
+
+      # The app polls releases/download/update-feed/<channel>.json (fixed address, no API limits).
+      - name: Update the in-app update feed
+        run: |
+          set -euo pipefail
+          mkdir -p feed
+          gh release view update-feed >/dev/null 2>&1 || gh release create update-feed \
+            --prerelease --latest=false --title "Update feed (used by the app, do not delete)" \
+            --notes "Machine-readable update manifests polled by installed copies of Book Reader."
+          gh release download update-feed --dir feed --pattern "*.json" || true
+          python3 tools/update_feed.py --manifest installer/latest.json --version "$VERSION" \
+            --channel "$CHANNEL" --feed feed
+          gh release upload update-feed feed/*.json --clobber
