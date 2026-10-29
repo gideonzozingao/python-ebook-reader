@@ -18,6 +18,8 @@ name: Release
 # builds pass too (otherwise the release is published without them, with a warning).
 #
 # Because the workflow commits the version bump to main, run "git pull" before working locally.
+# If a run that bumped the version fails (Windows build or publishing), the rollback job deletes
+# its tag and unpublished release and puts the previous version back, so a retry reuses the number.
 # Optional signing: repository secrets WINDOWS_CERT_PFX_BASE64 and WINDOWS_CERT_PASSWORD.
 
 on:
@@ -73,6 +75,8 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
       prerelease: ${{ steps.v.outputs.prerelease }}
       channel: ${{ steps.v.outputs.channel }}
+      bumped: ${{ steps.v.outputs.bumped }}      # true when this run committed a bump + tag
+      previous: ${{ steps.v.outputs.previous }}  # version before the bump (for the rollback job)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,6 +95,8 @@ jobs:
           CHANNEL: ${{ inputs.channel || 'beta' }}     # push to main => rolling beta
         run: |
           set -euo pipefail
+          previous="$(python scripts/bump_version.py --show)"
+          bumped=false
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             version="${GITHUB_REF_NAME#v}"
             code="$(python scripts/bump_version.py --show)"
@@ -105,6 +111,7 @@ jobs:
             git commit -am "Release v$version [skip ci]"
             git tag "v$version"
             git push origin "HEAD:$GITHUB_REF_NAME" "v$version"
+            bumped=true
           fi
           if [[ "$version" == *-* ]]; then pre=true; channel=beta; else pre=false; channel=stable; fi
           {
@@ -112,6 +119,8 @@ jobs:
             echo "tag=v$version"
             echo "prerelease=$pre"
             echo "channel=$channel"
+            echo "bumped=$bumped"
+            echo "previous=$previous"
           } >> "$GITHUB_OUTPUT"
           echo "Releasing $version (channel=$channel, prerelease=$pre, compiler=$BUILDER)"
 
@@ -538,3 +547,76 @@ jobs:
             sleep 5
           done
           echo "::warning::Could not push the README stats (main kept moving); they will update after the next release."
+
+  # ------------------------------------------------------------------------------- Rollback
+  # A run that bumped the version and then failed (Windows build, or publishing) would leave
+  # its tag and version bump behind, and the next run would skip to a higher number. This job
+  # deletes that run's tag and unpublished draft release and puts the previous version back on
+  # main, so a retry gets the same version number. It never touches a release that went live,
+  # and runs that were started by pushing a tag yourself are left alone.
+  rollback:
+    name: Undo the version bump of this failed run
+    needs: [prepare, windows, linux, macos, publish]
+    if: >-
+      ${{ always() && needs.prepare.result == 'success' && needs.prepare.outputs.bumped == 'true' &&
+          (needs.windows.result != 'success' || needs.publish.result == 'failure' || needs.publish.result == 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PREVIOUS: ${{ needs.prepare.outputs.previous }}
+      BRANCH: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Delete the unpublished release and the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::warning::Release $TAG is already published, so nothing is rolled back. Fix the problem and run the workflow again; it will make the next version."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            gh release delete "$TAG" --yes
+            echo "Deleted the draft release $TAG"
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            git push origin ":refs/tags/$TAG"
+            echo "Deleted the tag $TAG"
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Put version ${{ needs.prepare.outputs.previous }} back
+        if: steps.tag.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git pull --rebase origin "$BRANCH"
+            current="$(python3 scripts/bump_version.py --show)"
+            if [ "$current" != "$VERSION" ]; then
+              echo "::warning::$BRANCH is now at version $current (not $VERSION), so the version is left as it is."
+              exit 0
+            fi
+            python3 scripts/bump_version.py --set "$PREVIOUS"
+            git commit -am "Roll back to $PREVIOUS after failed release $TAG [skip ci]"
+            if git push origin "HEAD:$BRANCH"; then
+              echo "Version is back at $PREVIOUS; the next run will release $VERSION again."
+              exit 0
+            fi
+            git reset --hard "origin/$BRANCH"
+            sleep 5
+          done
+          echo "::error::Could not push the version rollback. Set __version__ back to $PREVIOUS by hand."
+          exit 1

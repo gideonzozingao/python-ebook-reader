@@ -38,7 +38,8 @@ function Import-BatchEnvironment([string]$BatchFile, [string]$Arguments = "") {
         foreach ($line in $lines) {
             if ($line -match '^([^=]+)=(.*)$') { Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] }
         }
-    } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    }
+    finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
 }
 
 # Makes Visual Studio's C compiler (with the Windows SDK) available to Nuitka, like opening a
@@ -72,7 +73,9 @@ $py = Join-Path $venv "Scripts\python.exe"
 if (-not (Test-Path $py)) {
     if (-not $Python) { $Python = if (Get-Command py -ErrorAction SilentlyContinue) { "py -3" } else { "python" } }
     Step "Creating the build venv ($venv) with: $Python"
-    $parts = $Python.Split(" ") | Where-Object { $_ }
+    # @(...) keeps this an array even for a single word like "python"; without it PowerShell
+    # unwraps the one result into a plain string and $parts[0] would be its first letter, "p".
+    $parts = @($Python.Split(" ", [StringSplitOptions]::RemoveEmptyEntries))
     $exeName = $parts[0]
     $extra = @($parts | Select-Object -Skip 1)
     & $exeName @extra -m venv $venv
@@ -99,7 +102,8 @@ if ($Compiler -eq "nuitka") {
     Use-VisualStudioCompiler
     & $py tools\build_nuitka.py
     if ($LASTEXITCODE -ne 0) { throw "Nuitka build failed. Scroll up for the reason." }
-} else {
+}
+else {
     Step "PyInstaller"
     if (Test-Path build) { Remove-Item build -Recurse -Force }
     & $py -m PyInstaller BookReader.spec --noconfirm --clean --distpath dist --workpath build
@@ -126,7 +130,8 @@ try {
     $t = Start-Process -FilePath (Resolve-Path $exe).Path -ArgumentList "--self-test" -Wait -PassThru
     Get-Content (Join-Path $testHome "selftest.txt") -ErrorAction SilentlyContinue | Write-Host
     if ($t.ExitCode -ne 0) { throw "SELF-TEST FAILED (exit code $($t.ExitCode)): a part is missing from the build." }
-} finally {
+}
+finally {
     $env:EPUB_READER_HOME = $oldHome
     Remove-Item $testHome -Recurse -Force -ErrorAction SilentlyContinue
 }

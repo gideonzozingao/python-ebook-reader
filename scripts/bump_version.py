@@ -5,6 +5,7 @@
     python scripts/bump_version.py patch beta       1.1.1 -> 1.1.2-beta.1 1.1.2-beta.1 -> 1.1.2-beta.2
     python scripts/bump_version.py minor beta       1.1.1 -> 1.2.0-beta.1 1.2.0-beta.3 -> 1.3.0-beta.1
     python scripts/bump_version.py --show           prints the current version, changes nothing
+    python scripts/bump_version.py --set 1.1.1      sets the version (used to undo a failed release)
 
 Rule of thumb: from a beta, "patch stable" publishes that beta's version as the final release,
 and "patch beta" makes the next beta of the same version.
@@ -60,8 +61,13 @@ def main() -> int:
         parse(current)
         print(current)
         return 0
+    if len(args) == 2 and args[0] == "--set":
+        parse(args[1])
+        INIT.write_text(text[:m.start(2)] + args[1] + text[m.end(2):], encoding="utf-8")
+        print(args[1])
+        return 0
     if len(args) != 2 or args[0] not in ("patch", "minor", "major") or args[1] not in ("stable", "beta"):
-        sys.exit("usage: bump_version.py patch|minor|major stable|beta   (or --show)")
+        sys.exit("usage: bump_version.py patch|minor|major stable|beta   (or --show, or --set X.Y.Z)")
     new = next_version(current, args[0], args[1])
     INIT.write_text(text[:m.start(2)] + new + text[m.end(2):], encoding="utf-8")
     print(new)
