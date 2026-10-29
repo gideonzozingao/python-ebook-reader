@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Book Reader
+Comment=Read EPUB, PDF and Markdown books
+Exec="@APP_DIR@/BookReader" %f
+Icon=book-reader
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/epub+zip;application/pdf;text/markdown;text/x-markdown;
