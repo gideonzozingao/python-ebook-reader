@@ -18,10 +18,16 @@ Windows, Linux and macOS.
 ## Release stats
 
 <!-- stats:start -->
+| | |
+|---|---|
+| **Latest stable** | [v2.0.0](https://github.com/gideonzozingao/python-ebook-reader/releases/tag/v2.0.0) (2026-10-29) |
+| **Latest beta** | [v1.0.0](https://github.com/gideonzozingao/python-ebook-reader/releases/tag/v1.0.0) (2026-10-21) |
+| **Releases published** | 2 |
+| **Successful release runs** | 0 of 0 finished (- success) |
+| **Last successful run** | - |
+| **Downloads** | 14 in total: Windows 14, Linux 0, macOS 0 |
 
-Stats appear here after the next release. They are rewritten automatically by the release
-workflow (`tools/update_readme_stats.py`), so do not edit this block by hand.
-
+<sub>Updated automatically after each release (2026-10-29 07:40 UTC).</sub>
 <!-- stats:end -->
 
 ## Features
