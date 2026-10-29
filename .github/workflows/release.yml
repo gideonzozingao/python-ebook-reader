@@ -200,43 +200,70 @@ jobs:
         shell: pwsh
         run: ./build.ps1 -Compiler $env:BUILDER -Python python
 
+      # Waits with $p.WaitForExit(timeout), never Start-Process -Wait: -Wait also waits for every
+      # process the installer starts (such as a relaunched BookReader), which can hang forever.
       - name: Smoke test - install silently, run the installed program's self-test
+        timeout-minutes: 10
         shell: pwsh
         run: |
+          function Wait-Exit($p, [int]$seconds, [string]$what) {
+            if (-not $p.WaitForExit($seconds * 1000)) {
+              Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+              throw "$what did not finish within $seconds seconds"
+            }
+            $p.WaitForExit()          # makes ExitCode available
+            return $p.ExitCode
+          }
           $setup = (Resolve-Path "installer/BookReader-Setup-$env:VERSION.exe").Path
           $dir = Join-Path $env:RUNNER_TEMP 'BookReaderTest'
           "SETUP_EXE=$setup" >> $env:GITHUB_ENV
           "TEST_DIR=$dir"    >> $env:GITHUB_ENV
-          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$dir" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "The installer exited with code $($p.ExitCode)" }
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$dir" -PassThru
+          $code = Wait-Exit $p 300 'The installer'
+          if ($code -ne 0) { throw "The installer exited with code $code" }
           $exe = Join-Path $dir 'BookReader.exe'
           if (-not (Test-Path $exe)) { throw 'BookReader.exe was not installed' }
           $data = Join-Path $env:RUNNER_TEMP 'br-data'
           $env:EPUB_READER_HOME = $data
-          $t = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru
+          $t = Start-Process $exe -ArgumentList '--self-test' -PassThru
+          $code = Wait-Exit $t 180 'The self-test'
           Get-Content (Join-Path $data 'selftest.txt') -ErrorAction SilentlyContinue | Write-Host
-          if ($t.ExitCode -ne 0) { throw 'The self-test of the installed program failed' }
+          if ($code -ne 0) { throw 'The self-test of the installed program failed' }
 
       # Checks the installer.iss relaunch rule used by the in-app updater. Needs a desktop
       # session on the runner, hence continue-on-error; delete that line once you've seen it pass.
       - name: Smoke test - the updater's silent upgrade relaunches the app
         continue-on-error: true
+        timeout-minutes: 8
         shell: pwsh
         run: |
           function Stop-App { Get-Process BookReader -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2 }
-          Stop-App
-          $p = Start-Process $env:SETUP_EXE -ArgumentList '/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=$env:TEST_DIR" -Wait -PassThru
-          Start-Sleep 6
-          if (Get-Process BookReader -ErrorAction SilentlyContinue) { Stop-App; throw 'A plain silent install started the app (it should not)' }
-          # same switches as INSTALLER_ARGS in book_reader/services/updater.py
-          $p = Start-Process $env:SETUP_EXE -ArgumentList '/SILENT','/SP-','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/RELAUNCH=1',"/DIR=$env:TEST_DIR" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "The upgrade exited with code $($p.ExitCode)" }
-          $deadline = (Get-Date).AddSeconds(40)
-          while (-not (Get-Process BookReader -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
-          $running = [bool](Get-Process BookReader -ErrorAction SilentlyContinue)
-          Stop-App
-          if (-not $running) { throw 'The updater switches did not start the new version' }
-          Write-Host 'OK: plain silent install leaves the app closed, /RELAUNCH=1 starts it.'
+          function Install([string[]]$switches) {
+            # wait for the installer only (not for the app it may start), at most 5 minutes
+            $p = Start-Process $env:SETUP_EXE -ArgumentList ($switches + "/DIR=$env:TEST_DIR") -PassThru
+            if (-not $p.WaitForExit(300000)) { Stop-Process -Id $p.Id -Force; Stop-App; throw 'The installer did not finish within 5 minutes' }
+            $p.WaitForExit()
+            if ($p.ExitCode -ne 0) { Stop-App; throw "The installer exited with code $($p.ExitCode)" }
+          }
+          function Wait-App([int]$seconds) {
+            $deadline = (Get-Date).AddSeconds($seconds)
+            while ((Get-Date) -lt $deadline) {
+              if (Get-Process BookReader -ErrorAction SilentlyContinue) { return $true }
+              Start-Sleep -Milliseconds 500
+            }
+            return $false
+          }
+          try {
+            Stop-App
+            Install @('/SILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-')
+            if (Wait-App 6) { throw 'A plain silent install started the app (it should not)' }
+            # same switches as INSTALLER_ARGS in book_reader/services/updater.py
+            Install @('/SILENT','/SP-','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/RELAUNCH=1')
+            if (-not (Wait-App 40)) { throw 'The updater switches did not start the new version' }
+            Write-Host 'OK: plain silent install leaves the app closed, /RELAUNCH=1 starts it.'
+          } finally {
+            Stop-App
+          }
 
       - name: Remove the signing certificate from the runner
         if: always()
