@@ -10,6 +10,9 @@
 #   Test build:   Actions tab -> "Release" -> Run workflow  (builds all three and keeps them as
 #                 downloadable artifacts, publishes nothing)
 #
+# A release needs the Windows build to pass; Linux and macOS packages are attached when their
+# builds pass too (otherwise the release is published without them, with a warning).
+#
 # Build tool for all three platforms: PyInstaller (default, bundles Python bytecode) or Nuitka
 # (compiles the code to C and then to machine code). Pick it in "Run workflow", or for tag
 # releases set the repository variable BUILDER to "nuitka" (Settings -> Secrets and variables ->
@@ -227,6 +230,8 @@ jobs:
     timeout-minutes: 90           # Nuitka compiles take much longer than PyInstaller builds
     env:
       QT_QPA_PLATFORM: offscreen   # run the self-tests without a screen
+      PACKAGE_SCRIPT: tools/package_linux.sh
+      EXTRA_FILES: packaging/linux/install.sh packaging/linux/book-reader.desktop
 
     steps:
       - name: Check out the code
@@ -241,9 +246,36 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      # Fails early, with a list, if a script this job needs was never committed.
+      - name: Check that the build scripts are in the repository
+        run: |
+          missing=0
+          for f in build_exe.sh BookReader.spec ${{ env.PACKAGE_SCRIPT }} ${{ env.EXTRA_FILES }}; do
+            if [ ! -f "$f" ]; then echo "::error::Missing from the repository: $f"; missing=1; fi
+          done
+          if [ "$BUILDER" = "nuitka" ] && [ ! -f tools/build_nuitka.py ]; then
+            echo "::error::Missing from the repository: tools/build_nuitka.py"; missing=1
+          fi
+          if [ "$missing" = 1 ]; then
+            echo "Commit and push the files above (git add ... && git commit && git push), then start a NEW run."
+            exit 1
+          fi
+
+      # The app, the package file name and the release all rely on this one number.
       - name: Read the version (and make sure the tag matches it)
         id: ver
-        run: bash tools/read_version.sh
+        run: |
+          ver="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([0-9]+(\.[0-9]+){1,3})".*/\1/p' book_reader/__init__.py | head -n 1)"
+          if [ -z "$ver" ]; then
+            echo '::error::Could not read a plain numeric __version__ (like "1.2.0") from book_reader/__init__.py'
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$ver" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match __version__ $ver. Bump book_reader/__init__.py, or tag v$ver."
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Building Book Reader $ver"
 
       # System libraries Qt needs to start (offscreen) for the self-test.
       - name: Install Qt's system libraries
@@ -294,6 +326,9 @@ jobs:
     # macos-latest runs on Apple Silicon, so this build is for M1/M2/M3/... Macs (arm64).
     runs-on: macos-latest
     timeout-minutes: 90           # Nuitka compiles take much longer than PyInstaller builds
+    env:
+      PACKAGE_SCRIPT: tools/package_macos.sh
+      EXTRA_FILES: ""
 
     steps:
       - name: Check out the code
@@ -308,9 +343,36 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      # Fails early, with a list, if a script this job needs was never committed.
+      - name: Check that the build scripts are in the repository
+        run: |
+          missing=0
+          for f in build_exe.sh BookReader.spec ${{ env.PACKAGE_SCRIPT }} ${{ env.EXTRA_FILES }}; do
+            if [ ! -f "$f" ]; then echo "::error::Missing from the repository: $f"; missing=1; fi
+          done
+          if [ "$BUILDER" = "nuitka" ] && [ ! -f tools/build_nuitka.py ]; then
+            echo "::error::Missing from the repository: tools/build_nuitka.py"; missing=1
+          fi
+          if [ "$missing" = 1 ]; then
+            echo "Commit and push the files above (git add ... && git commit && git push), then start a NEW run."
+            exit 1
+          fi
+
+      # The app, the package file name and the release all rely on this one number.
       - name: Read the version (and make sure the tag matches it)
         id: ver
-        run: bash tools/read_version.sh
+        run: |
+          ver="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([0-9]+(\.[0-9]+){1,3})".*/\1/p' book_reader/__init__.py | head -n 1)"
+          if [ -z "$ver" ]; then
+            echo '::error::Could not read a plain numeric __version__ (like "1.2.0") from book_reader/__init__.py'
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$ver" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match __version__ $ver. Bump book_reader/__init__.py, or tag v$ver."
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Building Book Reader $ver"
 
       - name: Build the program (${{ env.BUILDER }} + self-test)
         run: bash build_exe.sh
@@ -347,13 +409,15 @@ jobs:
           retention-days: 30
 
   # ------------------------------------------------------------------------------------ Publish
-  # Only for tags, and only when all three builds passed. Needs no Windows and no third-party
-  # code: it takes the files built above, writes checksums and the update manifest, and
-  # publishes the release.
+  # Only for tags. Waits for all three builds, but only the Windows one is required (the
+  # in-app updater depends on it): Linux and macOS packages are attached when their builds
+  # passed, and a failure there shows as a warning instead of holding back the release.
+  # Needs no Windows and no third-party code: it takes the files built above, writes checksums
+  # and the update manifest, and publishes the release.
   release:
     name: Publish GitHub release
     needs: [build, build-linux, build-macos]
-    if: github.ref_type == 'tag'
+    if: always() && github.ref_type == 'tag' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -378,7 +442,13 @@ jobs:
           merge-multiple: true
 
       - name: List what will be published
-        run: ls -lh installer
+        env:
+          LINUX_RESULT: ${{ needs.build-linux.result }}
+          MACOS_RESULT: ${{ needs.build-macos.result }}
+        run: |
+          ls -lh installer
+          [ "$LINUX_RESULT" = "success" ] || echo "::warning::The Linux build did not pass ($LINUX_RESULT); this release has no Linux package."
+          [ "$MACOS_RESULT" = "success" ] || echo "::warning::The macOS build did not pass ($MACOS_RESULT); this release has no macOS disk image."
 
       # GitHub writes the "what's new" list from the commits and pull requests since the last tag.
       # The same text goes on the release page and into the update dialog inside the app.
@@ -399,6 +469,7 @@ jobs:
 
       - name: Write checksums for the Linux and macOS files
         run: |
+          shopt -s nullglob
           cd installer
           for f in BookReader-"$VERSION"-linux-*.tar.gz BookReader-"$VERSION"-macos-*.dmg; do
             sha256sum "$f" > "$f.sha256"
@@ -407,17 +478,26 @@ jobs:
 
       # Install hints for the release page only (latest.json above already has the plain notes,
       # so the Windows update dialog does not show them).
+      # Only lists the downloads that are actually attached to this release.
       - name: Add download notes to the release page
         run: |
-          cat >> notes.md <<'EOF'
-
-          ### Downloads
-          - **Windows:** `BookReader-Setup-<version>.exe` - run it and follow the steps.
-          - **Linux (x86_64):** `BookReader-<version>-linux-x86_64.tar.gz` - unpack it, then run `./install.sh` inside the folder (no root needed). `~/.local/share/BookReader/uninstall.sh` removes it.
-          - **macOS (Apple Silicon):** `BookReader-<version>-macos-arm64.dmg` - open it and drag Book Reader to Applications. The app is not notarized by Apple yet, so the first time, right-click the app and choose **Open**.
-
-          Your books and notes are kept in your home folder (`.epub_reader`) and survive updates and uninstalls.
-          EOF
+          shopt -s nullglob
+          linux=(installer/BookReader-"$VERSION"-linux-*.tar.gz)
+          macos=(installer/BookReader-"$VERSION"-macos-*.dmg)
+          {
+            echo
+            echo "### Downloads"
+            echo "- **Windows:** \`BookReader-Setup-$VERSION.exe\` - run it and follow the steps. Installed copies update themselves."
+            if [ ${#linux[@]} -gt 0 ]; then
+              echo "- **Linux (x86_64):** \`$(basename "${linux[0]}")\` - unpack it, then run \`./install.sh\` inside the folder (no root needed). \`~/.local/share/BookReader/uninstall.sh\` removes it. If it does not start: \`sudo apt install libxcb-cursor0\`."
+            fi
+            if [ ${#macos[@]} -gt 0 ]; then
+              echo "- **macOS (Apple Silicon):** \`$(basename "${macos[0]}")\` - open it and drag BookReader to Applications. The app is not notarized by Apple yet, so the first time, right-click the app and choose **Open**."
+            fi
+            echo
+            echo "Your books and notes are kept in your home folder (\`.epub_reader\`) and survive updates and uninstalls."
+          } >> notes.md
+          cat notes.md
 
       # Created as a draft, filled, then published, so the "latest release" address never points
       # at a release that is still missing its files.
