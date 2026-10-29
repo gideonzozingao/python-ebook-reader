@@ -17,4 +17,4 @@ notes dashboard, Obsidian/Notion/Anki export, sync folder, voice dictation, mind
 Run with:  python -m book_reader   (or: python epub_reader2.py)
 """
 
-__version__ = "1.1.0"   # bump for each release (see BUILD.md)
+__version__ = "1.1.1"   # bump for each release (see BUILD.md)
