@@ -37,6 +37,16 @@ Windows, Linux and macOS.
 - **Take notes while you read**, sorted by topic: _General_, _Key idea_, _Quote_,
   _Question_, _Action item_, _To look up_ and _Vocabulary_.
 - **Review your notes** grouped by book section, by topic or by date.
+- **Reading plans** (Ctrl+Shift+P opens the plan drawer). Pick a start date, minutes per day and the weekdays you
+  read; the app counts the words in every chapter and lays the book out day by day with no
+  overlaps, splitting long chapters across days. Add a study factor and review or mind-map
+  steps for a learning plan, or pick a finish date and it tells you the minutes a day you
+  need. See a timeline, today's reading with links to each chapter, and progress that ticks
+  itself off as you read on. Export to your calendar (`.ics`) or as a Markdown checklist.
+  Cover pages, copyright, contents and the index are left out automatically. The library
+  and the "Welcome back" reminder show **today's reading** across all your planned books
+  (with a week-ahead preview for the book you were reading); each line opens the book right
+  where that session starts.
 - **Reading clock and daily goal.** Tracks how long you read (pausing automatically after
   5 minutes without activity) against a daily goal, 20 minutes by default.
 - **Voice dictation** for notes (optional, see [below](#optional-voice-dictation)).
@@ -123,6 +133,15 @@ pip install SpeechRecognition pyaudio
 
 The app works without these; dictation is simply unavailable.
 
+### Tests
+
+```bash
+pip install pytest
+python -m pytest tests -q
+```
+
+runs the reading-plan tests (word counts and the scheduler); no screen needed.
+
 ### Self-test
 
 ```bash
@@ -149,27 +168,27 @@ Needs [Inno Setup 6](https://jrsoftware.org/isdl.php) for the installer
 (`winget install JRSoftware.InnoSetup`).
 
 ```powershell
-.\build.ps1                       # PyInstaller + installer -> installer\BookReader-Setup-<version>.exe
-.\build.ps1 -Compiler nuitka      # compile to native code with Nuitka, then the installer
-.\build.ps1 -SkipInstaller        # only the program folder dist\BookReader
-.\build.ps1 -Console              # keep a console window (shows errors while testing)
-.\build.ps1 -Voice                # also bundle voice dictation
-.\build.ps1 -Python "py -3.12"    # Python used to create the build venv (.venv-build)
+.\bin\build.ps1                       # PyInstaller + installer -> installer\BookReader-Setup-<version>.exe
+.\bin\build.ps1 -Compiler nuitka      # compile to native code with Nuitka, then the installer
+.\bin\build.ps1 -SkipInstaller        # only the program folder dist\BookReader
+.\bin\build.ps1 -Console              # keep a console window (shows errors while testing)
+.\bin\build.ps1 -Voice                # also bundle voice dictation
+.\bin\build.ps1 -Python "py -3.12"    # Python used to create the build venv (.venv-build)
 ```
 
-Or double-click `build.bat` (same options, e.g. `build.bat -Compiler nuitka`). Each build runs
+Or double-click `bin\build.bat` (same options, e.g. `bin\build.bat -Compiler nuitka`). Each build runs
 the program's self-test and writes a `.sha256` next to the installer.
 
 For Nuitka, install **Visual Studio Build Tools** with the _Desktop development with C++_
-workload (including a Windows SDK); `build.ps1` loads the compiler automatically.
+workload (including a Windows SDK); `bin\build.ps1` loads the compiler automatically.
 
 ### Linux and macOS
 
 ```bash
-bash build_exe.sh                          # PyInstaller
-BUILDER=nuitka bash build_exe.sh           # Nuitka
-bash tools/package_linux.sh <version>      # Linux  -> installer/BookReader-<version>-linux-<arch>.tar.gz
-bash tools/package_macos.sh <version>      # macOS  -> installer/BookReader-<version>-macos-<arch>.dmg
+bash bin/build_exe.sh                      # PyInstaller
+BUILDER=nuitka bash bin/build_exe.sh       # Nuitka
+bash bin/package_linux.sh <version>        # Linux  -> installer/BookReader-<version>-linux-<arch>.tar.gz
+bash bin/package_macos.sh <version>        # macOS  -> installer/BookReader-<version>-macos-<arch>.dmg
 ```
 
 Linux builds need Qt's system libraries for the self-test
@@ -287,11 +306,17 @@ epub_reader2.py          entry point
 book_reader/             the application package (core, services, ui, assets)
 BookReader.spec          PyInstaller recipe (Windows, Linux, macOS)
 installer.iss            Windows installer (Inno Setup)
-build.ps1 / build.bat    Windows build: program + installer (PyInstaller or Nuitka)
-build_exe.sh             Linux/macOS build (PyInstaller or Nuitka)
+bin/                     build scripts (bash, PowerShell, batch); each runs in the project folder
+  build.ps1 / build.bat  Windows build: program + installer (PyInstaller or Nuitka)
+  build_exe.bat          Windows program only; build_installer.bat adds the installer
+  build_exe.sh           Linux/macOS build (PyInstaller or Nuitka)
+  package_linux.sh       Linux .tar.gz package;  package_macos.sh: macOS .dmg
+  sign_file.bat          code signing (configured by sign_config.bat; see BUILD.md)
+  read_version.sh        print the app version (checks a release tag against it)
 requirements-build*.txt  build requirements
 scripts/bump_version.py  version bumps used by the release workflow
-tools/                   Nuitka build, Linux/macOS packaging, update manifest, feed and README stats
+tests/                   pytest tests (reading plan)
+tools/                   Python build helpers: Nuitka build, update manifest, feed and README stats
 packaging/linux/         Linux install script and menu entry
 .github/workflows/       automated release builds
 ```
