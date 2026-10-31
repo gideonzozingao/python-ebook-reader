@@ -34,6 +34,7 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
+from book_reader.ui.pages.plan_mixin import PlanMixin
 from book_reader.ui.pages.roadmap_mixin import RoadmapMixin
 from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.notes_panel import NotesPanel
@@ -42,7 +43,7 @@ from book_reader.ui.widgets.status_bar import StatusBar
 
 
 class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin,
-              RoadmapMixin, QWidget):
+              RoadmapMixin, PlanMixin, QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
     appearanceRequested = Signal()
@@ -152,6 +153,8 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
                                "Mind maps for this book, or turn your notes into one (Ctrl+M)")
         self.act_roadmap = act("🗺  Roadmap", lambda: self.open_roadmap(), "Ctrl+R",
                                "Roadmap of this book (Ctrl+R)")
+        self.act_plan = act("📅  Plan", lambda: self.open_plan(toggle=True), "Ctrl+Shift+P",
+                            "Reading plan: a day-by-day schedule for this book (Ctrl+Shift+P)")
         self.act_notes = act("✎  Notes", self.notes_panel.setVisible, "Ctrl+Shift+N",
                              "Highlights and notes (Ctrl+Shift+N)", True)
         self.act_select = act("⌶  Select", self.set_select_mode, "Ctrl+E",
@@ -340,6 +343,7 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
         QTimer.singleShot(0, self.view.relayout)  # re-fit once the page is shown
         QTimer.singleShot(0, self.view.setFocus)
         self.auto_show_roadmap()
+        self.plan_on_open()
         return True
 
     def close_book(self):
@@ -347,6 +351,7 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
             return
         self.close_mindmap()
         self.close_roadmap()
+        self.close_plan()
         self._save_timer.stop()
         self.save_position()
         self.tracker.stop()
@@ -365,6 +370,7 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
             item = self._current_toc_item(page)
             self.library.update_position(self.book_id, page, frac, self.view.overall(),
                                          item.text(0) if item is not None else "")
+            self.plan_track()
 
     # -- journal hooks ------------------------------------------------------- #
 
@@ -538,13 +544,15 @@ class PdfPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindM
         """Show or hide the optional features according to Settings (also blocks their shortcuts)."""
         on = lambda name: features.enabled(self.prefs, name)
         for action, name in ((self.act_mindmap, "mindmap"), (self.act_roadmap, "roadmap"),
-                             (self.act_journal, "journal")):
+                             (self.act_plan, "plan"), (self.act_journal, "journal")):
             action.setVisible(on(name))
             action.setEnabled(on(name))
         if not on("journal"):
             self.act_journal.setChecked(False)   # closes the journal panel
         if not on("roadmap"):
             self.close_roadmap()
+        if not on("plan"):
+            self.close_plan()
         if not on("mindmap"):
             self.close_mindmap()
         self.journal.set_features(review=on("flashcards"), mindmap=on("mindmap"))

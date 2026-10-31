@@ -18,6 +18,10 @@ class Feature:
 FEATURES = (
     Feature("roadmap", "Book roadmap",
             "An outline of the open book with page ranges and a link to every section.", "Ctrl+R"),
+    Feature("plan", "Reading plan",
+            "Turn a book's chapters into a day-by-day reading or study schedule: a timeline, "
+            "today's reading with links to each chapter, progress tracking and calendar export.",
+            "Ctrl+Shift+P"),
     Feature("mindmap", "Mind maps",
             "Draw mind maps for a book, or turn your notes into one.", "Ctrl+M"),
     Feature("journal", "Book journal",

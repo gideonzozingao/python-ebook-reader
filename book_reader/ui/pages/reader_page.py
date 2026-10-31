@@ -37,6 +37,7 @@ from book_reader.ui.pages.mixins import (
     MindMapMixin,
     ReadingListMixin,
 )
+from book_reader.ui.pages.plan_mixin import PlanMixin
 from book_reader.ui.pages.roadmap_mixin import RoadmapMixin
 from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.epub_view import Reader
@@ -47,7 +48,7 @@ from book_reader.utils import pretty
 
 
 class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, MindMapMixin,
-                 RoadmapMixin, QWidget):
+                 RoadmapMixin, PlanMixin, QWidget):
     backRequested = Signal()
     prefsChanged = Signal()
     appearanceRequested = Signal()
@@ -169,6 +170,8 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
                                "Mind maps for this book, or turn your notes into one (Ctrl+M)")
         self.act_roadmap = act("🗺  Roadmap", lambda: self.open_roadmap(), "Ctrl+R",
                                "Roadmap of this book (Ctrl+R)")
+        self.act_plan = act("📅  Plan", lambda: self.open_plan(toggle=True), "Ctrl+Shift+P",
+                            "Reading plan: a day-by-day schedule for this book (Ctrl+Shift+P)")
         self.act_find = act("🔍  Find", self.toggle_find, None, "Find in book (Ctrl+F)", True)
         make_shortcut(self, "Ctrl+F", self.focus_find)
         bm = QToolButton()
@@ -296,11 +299,13 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
         self._sync_reading(row["reading"] == 1)
         self.reader.setFocus()
         self.auto_show_roadmap()
+        self.plan_on_open()
         return True
 
     def close_book(self):
         self.close_mindmap()
         self.close_roadmap()
+        self.close_plan()
         if self.act_find.isChecked():
             self.act_find.setChecked(False)
         if self.book:
@@ -318,6 +323,7 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
             overall = min(1.0, (self.spine_index + ratio) / max(1, len(self.book.spine)))
             self.library.update_position(self.book_id, self.spine_index, ratio, overall,
                                          self.chapter_label(self.spine_index))
+            self.plan_track()
 
     # -- journal hooks ------------------------------------------------------- #
 
@@ -460,13 +466,15 @@ class ReaderPage(ReadingListMixin, JournalMixin, BookmarksMixin, LookupMixin, Mi
         """Show or hide the optional features according to Settings (also blocks their shortcuts)."""
         on = lambda name: features.enabled(self.prefs, name)
         for action, name in ((self.act_mindmap, "mindmap"), (self.act_roadmap, "roadmap"),
-                             (self.act_journal, "journal")):
+                             (self.act_plan, "plan"), (self.act_journal, "journal")):
             action.setVisible(on(name))
             action.setEnabled(on(name))
         if not on("journal"):
             self.act_journal.setChecked(False)   # closes the journal panel
         if not on("roadmap"):
             self.close_roadmap()
+        if not on("plan"):
+            self.close_plan()
         if not on("mindmap"):
             self.close_mindmap()
         self.journal.set_features(review=on("flashcards"), mindmap=on("mindmap"))

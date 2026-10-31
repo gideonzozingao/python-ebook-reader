@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from book_reader.constants import BOOK_EXTS
 from book_reader.core import features
+from book_reader.services import plan_agenda
 from book_reader.core.library import Library
 from book_reader.core.prefs import Prefs
 from book_reader.core.tracker import ReadingTracker
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         self.library_page.removeRequested.connect(self.remove_book)
         self.library_page.statsRequested.connect(self.show_stats)
         self.library_page.continueRequested.connect(self.open_book)
+        self.library_page.planItemRequested.connect(self.open_plan_item)
         self.library_page.backupRequested.connect(self.backup_library)
         self.library_page.restoreRequested.connect(self.restore_library)
         self.updates = UpdateManager(self, self.prefs)
@@ -136,6 +138,7 @@ class MainWindow(QMainWindow):
         theme = THEMES[self.prefs.v["theme"]]
         self.settings_page.set_theme(theme)
         for dlg in (self.reader_page._mm_dialog, self.pdf_page._mm_dialog,
+                    self.reader_page._plan_drawer, self.pdf_page._plan_drawer,
                     getattr(self, "_mm_dialog", None)):
             if dlg is not None:
                 dlg.set_theme(theme)
@@ -216,6 +219,27 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"{row['title']} — Book Reader")
             self.stack.setCurrentWidget(page)
 
+    def open_plan_item(self, item):
+        """A "Today's reading" line in the library: open the book where that reading starts."""
+        row = self.library.get(item.book_id)
+        if row is None:
+            return
+        self.open_book(item.book_id)
+        page = self.pdf_page if row["format"] == "pdf" else self.reader_page
+        if page.book_id != item.book_id:
+            return
+
+        def go():
+            if page.book_id != item.book_id:
+                return
+            if item.stale:
+                page.open_plan()
+            elif item.exact:
+                page.jump_to_location(item.index, item.ratio)
+            else:
+                page.goto_roadmap_target(item.index, item.fragment)
+        QTimer.singleShot(300, go)
+
     # -- notes hub, note links, sync ---------------------------------------------- #
 
     def open_notes_hub(self, tab: int = 0):
@@ -274,11 +298,25 @@ class MainWindow(QMainWindow):
         last = self.library.last_read_book()
         if last is None:
             return
-        others = [r for r in self.library.reading_list(6) if r["id"] != last["id"]][:4]
-        dlg = ReminderDialog(self, last, others, THEMES[self.prefs.v["theme"]])
+        others = [r for r in self.library.reading_list(8) if r["id"] != last["id"]][:6]
+        plan = agenda = None
+        if features.enabled(self.prefs, "plan"):
+            try:
+                plan = plan_agenda.overview(self.library, last["id"])
+                agenda = plan_agenda.todays_reading(self.library)
+            except Exception:
+                plan = agenda = None     # the reminder must always open
+        dlg = ReminderDialog(self, last, others, THEMES[self.prefs.v["theme"]], plan, agenda)
         dlg.exec()
         self.prefs.set("show_reminder", dlg.show_again())
-        if dlg.chosen is not None:
+        if dlg.chosen_item is not None:
+            self.open_plan_item(dlg.chosen_item)
+        elif dlg.open_plan:
+            self.open_book(last["id"])
+            page = self.pdf_page if last["format"] == "pdf" else self.reader_page
+            if page.book_id == last["id"]:
+                QTimer.singleShot(250, page.open_plan)
+        elif dlg.chosen is not None:
             self.open_book(dlg.chosen)
 
     def remove_book(self, book_id: int):

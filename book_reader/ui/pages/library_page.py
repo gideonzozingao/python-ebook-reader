@@ -32,10 +32,12 @@ from book_reader import __version__
 from book_reader.constants import COVER_H, COVER_W
 from book_reader.core import features
 from book_reader.core.library import Library
-from book_reader.services import goals
+from book_reader.services import goals, plan_agenda
+from book_reader.themes import THEMES
 from book_reader.ui.dialogs.subject_dialog import SubjectDialog
 from book_reader.ui.widgets.appearance_buttons import appearance_buttons
 from book_reader.ui.widgets.cover import make_collection_tile, make_cover
+from book_reader.ui.widgets.plan_agenda_panel import PlanAgendaPanel
 from book_reader.utils import ago, fmt_duration
 
 
@@ -56,6 +58,7 @@ class LibraryPage(QWidget):
     appearanceRequested = Signal()
     settingsRequested = Signal()
     modeToggleRequested = Signal()
+    planItemRequested = Signal(object)   # a "Today's reading" line was clicked
 
     def __init__(self, library: Library, prefs=None):
         super().__init__()
@@ -124,6 +127,11 @@ class LibraryPage(QWidget):
         for button in aa_buttons:
             head.addWidget(button)
         root.addLayout(head)
+
+        self.agenda = PlanAgendaPanel()
+        self.agenda.itemRequested.connect(self.planItemRequested.emit)
+        self._agenda_sig = None
+        root.addWidget(self.agenda)
 
         tools = QHBoxLayout()
         self.btn_all = QPushButton("All Books")
@@ -304,6 +312,25 @@ class LibraryPage(QWidget):
         stats_on = features.enabled(self.prefs, "stats")
         self.btn_stats.setVisible(stats_on)
         self.goal_label.setVisible(stats_on)
+        self._agenda_sig = None
+        self.refresh_agenda()
+
+    def refresh_agenda(self, force: bool = False):
+        """Today's reading across planned books; only rebuilt when a plan or the day changed
+        (refresh also runs on every keystroke in the search box)."""
+        if not hasattr(self, "agenda"):
+            return
+        if self.prefs is not None and not features.enabled(self.prefs, "plan"):
+            self.agenda.setVisible(False)
+            return
+        theme = THEMES[self.prefs.v["theme"]] if self.prefs is not None else THEMES["Light"]
+        try:
+            sig = (plan_agenda.signature(self.library), theme["bg"])
+        except Exception:
+            return
+        if force or sig != self._agenda_sig:
+            self._agenda_sig = sig
+            self.agenda.show_agenda(plan_agenda.todays_reading(self.library), theme)
 
     def refresh(self):
         if not hasattr(self, "shelf"):  # called while the page is still being built
@@ -317,6 +344,7 @@ class LibraryPage(QWidget):
             self.btn_continue.setText(f"▶  Continue: {t}")
         self.btn_continue.setVisible(bool(cid))
         self._update_subtitle()
+        self.refresh_agenda()
         if self.prefs is not None:
             self.goal_label.setText(goals.header_text(
                 goals.summary(self.library, self.prefs.v["daily_goal"])))
