@@ -20,14 +20,14 @@ Windows, Linux and macOS.
 <!-- stats:start -->
 | | |
 |---|---|
-| **Latest stable** | [v2.1.2](https://github.com/gideonzozingao/python-ebook-reader/releases/tag/v2.1.2) (2026-10-31) |
+| **Latest stable** | [v2.2.0](https://github.com/gideonzozingao/python-ebook-reader/releases/tag/v2.2.0) (2026-10-31) |
 | **Latest beta** | [v1.0.0](https://github.com/gideonzozingao/python-ebook-reader/releases/tag/v1.0.0) (2026-10-21) |
-| **Releases published** | 4 |
-| **Successful release runs** | 2 of 7 finished (28% success) |
-| **Last successful run** | [2026-10-29](https://github.com/gideonzozingao/python-ebook-reader/actions/runs/40847542389) |
-| **Downloads** | 26 in total: Windows 22, Linux 2, macOS 2 |
+| **Releases published** | 5 |
+| **Successful release runs** | 4 of 10 finished (40% success) |
+| **Last successful run** | [2026-10-31](https://github.com/gideonzozingao/python-ebook-reader/actions/runs/41164410120) |
+| **Downloads** | 30 in total: Windows 24, Linux 3, macOS 3 |
 
-<sub>Updated automatically after each release (2026-10-31 03:04 UTC).</sub>
+<sub>Updated automatically after each release (2026-10-31 03:30 UTC).</sub>
 <!-- stats:end -->
 
 ## Features
