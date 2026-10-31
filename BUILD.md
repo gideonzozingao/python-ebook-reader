@@ -84,12 +84,26 @@ and never run; releases tagged like `1.3.0-beta1` are ignored. Signing the insta
 `.github/workflows/release.yml` builds and publishes a release for you, using the same scripts
 as above (`bin\build.ps1` on Windows, `bin/build_exe.sh` + `bin/package_*.sh` on Linux and macOS).
 
-**To release:** bump `__version__` in `book_reader/__init__.py`, commit, then
+**To release with a tag:** set `__version__` in `book_reader/__init__.py`, commit it to `main`,
+tag that commit and push both:
 
+    git commit -am "Release v1.2.0"
     git tag v1.2.0
-    git push origin v1.2.0
+    git push origin main v1.2.0
 
-The tag must equal `v` + `__version__`, otherwise the build stops with a clear message.
+Or use Actions -> *Release* -> *Run workflow* from the branch `main`, which bumps the version,
+commits and tags for you.
+
+Before anything is built, the workflow checks (and stops with a clear message otherwise) that:
+
+* the tag points at a commit that is on `main`, and equals `v` + `__version__`;
+* no published release uses that tag yet (a leftover draft from a failed run is fine);
+* the version is higher than the latest release of its channel, in semantic-version order
+  (`2.2.0-beta.3` < `2.2.0` < `2.2.1-beta.1`): a stable version must be higher than the
+  latest stable release, a beta higher than every release. See `scripts/release_guard.py`.
+
+Pushing the release commit to `main` does not make a rolling beta: a push that sets a new
+stable `__version__` without its tag, or pushes an already tagged commit, is left alone.
 
 **To try a build without releasing:** Actions tab -> *Release* -> *Run workflow*. The installer is
 kept for 30 days under the run's *Artifacts*; nothing is published.

@@ -5,10 +5,21 @@ name: Release
 # Ways to publish:
 #  1. Actions tab -> Release -> Run workflow: pick bump (patch/minor/major), channel
 #     (stable/beta) and compiler. The version is bumped, committed, tagged, built and published.
-#  2. Push a tag yourself (book_reader/__init__.py must already contain that version):
-#        git tag v1.2.0 && git push origin v1.2.0
+#  2. Push a version tag from main. Set __version__ in book_reader/__init__.py, commit it to
+#     main, then tag that commit and push both:
+#        git commit -am "Release v1.2.0"
+#        git tag v1.2.0
+#        git push origin main v1.2.0
+#     The tag must be on a commit that is on main and contains that __version__.
 #  3. Rolling beta: every push to main (direct commit or merged PR) publishes the next beta
 #     (1.2.0-beta.1, -beta.2, ...). Turn this off with the repository variable AUTO_BETA=false.
+#     No beta is made when the push sets a new stable __version__ that has no tag yet (it waits
+#     for your tag, way 2), or when the pushed commit is itself a release.
+#
+# Every way checks first, before anything is built (scripts/release_guard.py):
+#   - no published release uses the tag yet (a leftover draft from a failed run is fine), and
+#   - the version is higher than the latest release of its channel (semantic versioning:
+#     stable must beat the latest stable; a beta must beat every release, stable or beta).
 #
 # Installed Windows apps read the update feed of their channel:
 #     https://github.com/<owner>/<repo>/releases/download/update-feed/stable.json  (or beta.json)
@@ -65,9 +76,11 @@ jobs:
   prepare:
     name: Prepare version
     runs-on: ubuntu-latest
+    # [skip ci] and AUTO_BETA only apply to pushes to a branch; a pushed version tag always runs
     if: >-
-      ${{ !contains(github.event.head_commit.message, '[skip ci]') &&
-          (github.event_name != 'push' || github.ref_type == 'tag' || vars.AUTO_BETA != 'false') }}
+      ${{ github.ref_type == 'tag' ||
+          (!contains(github.event.head_commit.message, '[skip ci]') &&
+           (github.event_name != 'push' || vars.AUTO_BETA != 'false')) }}
     permissions:
       contents: write          # commits the version bump and pushes the tag
     outputs:
@@ -75,6 +88,7 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
       prerelease: ${{ steps.v.outputs.prerelease }}
       channel: ${{ steps.v.outputs.channel }}
+      release: ${{ steps.v.outputs.release }}    # false: nothing to build (see the notices)
       bumped: ${{ steps.v.outputs.bumped }}      # true when this run committed a bump + tag
       previous: ${{ steps.v.outputs.previous }}  # version before the bump (for the rollback job)
     steps:
@@ -89,29 +103,65 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - id: v
-        name: Bump, commit and tag (or check the pushed tag)
+        name: Work out the version and check that it can be released
         env:
           BUMP: ${{ inputs.bump || 'patch' }}
           CHANNEL: ${{ inputs.channel || 'beta' }}     # push to main => rolling beta
+          MAIN: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           previous="$(python scripts/bump_version.py --show)"
           bumped=false
+          release=true
+          releases="$RUNNER_TEMP/releases.json"
+          gh release list --limit 1000 --json tagName,isDraft,isPrerelease > "$releases"
+
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            version="${GITHUB_REF_NAME#v}"
-            code="$(python scripts/bump_version.py --show)"
-            if [[ "$code" != "$version" ]]; then
-              echo "::error::Tag $GITHUB_REF_NAME doesn't match __version__ ($code) in book_reader/__init__.py"
+            if [[ "$GITHUB_EVENT_NAME" != "push" ]]; then
+              echo "::error::Run workflow was started on the tag $GITHUB_REF_NAME. Start it again with 'Use workflow from: Branch: $MAIN' (it makes the tag itself), or push a new version tag."
               exit 1
             fi
+            # A pushed version tag: it must be on main, match __version__, and be releasable.
+            version="${GITHUB_REF_NAME#v}"
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$MAIN"; then
+              echo "::error::Tag $GITHUB_REF_NAME points at a commit that is not on $MAIN. Push that commit to $MAIN first (or tag a commit that is on $MAIN), then delete and push the tag again."
+              exit 1
+            fi
+            if [[ "$previous" != "$version" ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match __version__ ($previous) in book_reader/__init__.py. Set __version__ = \"$version\", commit it to $MAIN, and tag that commit."
+              exit 1
+            fi
+            python scripts/release_guard.py "$version" "$releases"
           else
-            version="$(python scripts/bump_version.py "$BUMP" "$CHANNEL")"
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -am "Release v$version [skip ci]"
-            git tag "v$version"
-            git push origin "HEAD:$GITHUB_REF_NAME" "v$version"
-            bumped=true
+            if [[ "$GITHUB_REF_NAME" != "$MAIN" ]]; then
+              echo "::error::Releases are made from $MAIN only (this run is on $GITHUB_REF_NAME). Choose 'Use workflow from: Branch: $MAIN'."
+              exit 1
+            fi
+            version="$previous"
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              # Rolling beta, except when this push is a release of its own (or waits for one).
+              tagged="$(git rev-list -n 1 "refs/tags/v$previous" 2>/dev/null || true)"
+              if [[ -n "$tagged" && "$tagged" == "$(git rev-parse HEAD)" ]]; then
+                echo "::notice::This commit is release v$previous, so no beta is made for it."
+                release=false
+              elif [[ "$previous" != *-* && -z "$tagged" ]]; then
+                echo "::notice::__version__ is $previous and there is no tag v$previous yet. Push the tag v$previous to release it; no beta is made from this push."
+                release=false
+              fi
+            fi
+            if [[ "$release" == "true" ]]; then
+              version="$(python scripts/bump_version.py "$BUMP" "$CHANNEL")"
+              # checked before anything is committed, so a refused version leaves main untouched
+              python scripts/release_guard.py "$version" "$releases"
+              git config user.name  "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -am "Release v$version [skip ci]"
+              git tag "v$version"
+              git push origin "HEAD:$GITHUB_REF_NAME" "v$version"
+              bumped=true
+            fi
           fi
           if [[ "$version" == *-* ]]; then pre=true; channel=beta; else pre=false; channel=stable; fi
           {
@@ -119,15 +169,19 @@ jobs:
             echo "tag=v$version"
             echo "prerelease=$pre"
             echo "channel=$channel"
+            echo "release=$release"
             echo "bumped=$bumped"
             echo "previous=$previous"
           } >> "$GITHUB_OUTPUT"
-          echo "Releasing $version (channel=$channel, prerelease=$pre, compiler=$BUILDER)"
+          if [[ "$release" == "true" ]]; then
+            echo "Releasing $version (channel=$channel, prerelease=$pre, compiler=$BUILDER)"
+          fi
 
   # ------------------------------------------------------------------------------- Windows
   windows:
     name: Build Windows installer
     needs: prepare
+    if: ${{ needs.prepare.outputs.release == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 90
     env:
@@ -283,6 +337,7 @@ jobs:
   linux:
     name: Build Linux package
     needs: prepare
+    if: ${{ needs.prepare.outputs.release == 'true' }}
     # Oldest Ubuntu runner on purpose: built against an older glibc, the program also runs on
     # newer distributions. If GitHub retires this image, switch to ubuntu-24.04.
     runs-on: ubuntu-22.04
@@ -357,6 +412,7 @@ jobs:
   macos:
     name: Build macOS disk image
     needs: prepare
+    if: ${{ needs.prepare.outputs.release == 'true' }}
     runs-on: macos-latest      # Apple Silicon (arm64)
     timeout-minutes: 90
     env:
