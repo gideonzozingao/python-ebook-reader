@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS book_tags(
     book_id INTEGER, name TEXT COLLATE NOCASE, UNIQUE(book_id, name));
 CREATE TABLE IF NOT EXISTS book_collections(
     book_id INTEGER, name TEXT COLLATE NOCASE, UNIQUE(book_id, name));
+CREATE TABLE IF NOT EXISTS reading_plans(
+    book_id INTEGER PRIMARY KEY, data TEXT, updated_at REAL);
 """
 
 
@@ -231,7 +233,7 @@ class Library:
         self.db.execute("DELETE FROM book_notes WHERE book_id=?", (book_id,))
         self.db.execute("DELETE FROM book_summaries WHERE book_id=?", (book_id,))
         for table in ("bookmarks", "pdf_marks", "card_progress", "book_tags",
-                      "book_collections", "mindmaps", "note_reviews"):
+                      "book_collections", "mindmaps", "note_reviews", "reading_plans"):
             self.db.execute(f"DELETE FROM {table} WHERE book_id=?", (book_id,))
         self.db.execute("DELETE FROM sessions WHERE book_id=?", (book_id,))
         self.db.execute("DELETE FROM subjects WHERE book_id=?", (book_id,))
@@ -608,6 +610,27 @@ class Library:
     def delete_mindmap(self, map_id):
         self.db.execute("DELETE FROM mindmaps WHERE id=?", (map_id,))
         self.db.commit()
+
+    # -- reading plans (one JSON document per book) ------------------------------ #
+
+    def get_plan(self, book_id) -> str | None:
+        row = self.db.execute("SELECT data FROM reading_plans WHERE book_id=?",
+                              (book_id,)).fetchone()
+        return row["data"] if row else None
+
+    def save_plan(self, book_id, data: str):
+        self.db.execute(
+            "INSERT INTO reading_plans(book_id,data,updated_at) VALUES(?,?,?)"
+            " ON CONFLICT(book_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+            (book_id, data, time.time()))
+        self.db.commit()
+
+    def delete_plan(self, book_id):
+        self.db.execute("DELETE FROM reading_plans WHERE book_id=?", (book_id,))
+        self.db.commit()
+
+    def planned_books(self) -> list:
+        return [r["book_id"] for r in self.db.execute("SELECT book_id FROM reading_plans")]
 
     # -- change notifications (used by the notes sync folder) -------------------- #
 
