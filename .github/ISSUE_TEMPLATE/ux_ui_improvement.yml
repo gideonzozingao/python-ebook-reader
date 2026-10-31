@@ -1,0 +1,106 @@
+name: UX/UI improvement
+description: Suggest a usability, layout, or visual design improvement for Book Reader
+title: "[UX/UI]: "
+labels: ["ux", "ui", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping make Book Reader easier and nicer to use! Screenshots or screen recordings help a lot.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: What kind of improvement is this?
+      options:
+        - Usability (something is confusing or takes too many steps)
+        - Visual design (colors, spacing, typography, icons)
+        - Layout (placement or organization of controls)
+        - Accessibility (contrast, font size, keyboard, screen reader)
+        - Responsiveness (window resizing, high DPI, small screens)
+        - Performance feel (lag, flicker, slow transitions)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      multiple: true
+      options:
+        - Reading (EPUB / PDF / Markdown)
+        - Library
+        - Notes
+        - Reading clock / goals
+        - Voice dictation
+        - Toolbar / menus
+        - Settings / themes
+        - Installing / updating
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: What is the current experience?
+      description: Describe what you see or do today and what feels wrong.
+      placeholder: "In the library view, the book covers are too small and the titles get cut off..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would a better experience look like?
+      description: Describe the change you have in mind. Sketches, mockups, or links to examples are welcome.
+      placeholder: "Larger cover thumbnails with a two-line title, and a toggle between grid and list view..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots, mockups, or recordings
+      description: Drag and drop images or videos here.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: How much does this affect you?
+      options:
+        - Minor annoyance
+        - Slows me down regularly
+        - Blocks or strongly discourages me from using a feature
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, display resolution/scaling, and app version, if relevant.
+      placeholder: "Windows 11, 1920x1080 at 125% scaling, Book Reader v1.2.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds you have tried
+    validations:
+      required: false
+
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to help build it?
+      options:
+        - "No, just suggesting"
+        - "Yes, I can test a beta"
+        - "Yes, I can provide a mockup or design"
+        - "Yes, I'd like to contribute code"
+    validations:
+      required: false
