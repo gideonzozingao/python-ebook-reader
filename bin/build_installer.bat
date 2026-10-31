@@ -1,16 +1,17 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+cd /d "%~dp0.."
+rem  ^ this file is in bin: everything below runs in the project folder
 set "PAUSE=pause"
 
 rem ---------------------------------------------------------------------------
 rem  Builds BookReader-Setup-<version>.exe  (one installer file you can hand out).
-rem    build_installer.bat                 version from book_reader\__init__.py
-rem    build_installer.bat 1.2.0           choose the version number
-rem    build_installer.bat 1.2.0 /nuitka   compile the program with Nuitka (machine code)
+rem    bin\build_installer.bat                 version from book_reader\__init__.py
+rem    bin\build_installer.bat 1.2.0           choose the version number
+rem    bin\build_installer.bat 1.2.0 /nuitka   compile the program with Nuitka (machine code)
 rem                                        instead of PyInstaller; takes much longer
-rem    build_installer.bat 1.2.0 /skipbuild   reuse the existing dist\BookReader folder
-rem    build_installer.bat 1.2.0 /nopause     do not wait for a key or open Explorer (used by the GitHub workflow)
+rem    bin\build_installer.bat 1.2.0 /skipbuild   reuse the existing dist\BookReader folder
+rem    bin\build_installer.bat 1.2.0 /nopause     do not wait for a key or open Explorer (used by the GitHub workflow)
 rem  The build tool can also come from the environment variable BUILDER=pyinstaller|nuitka.
 rem  Needs Inno Setup 6 (free):  winget install JRSoftware.InnoSetup
 rem ---------------------------------------------------------------------------
@@ -47,11 +48,11 @@ if not defined ISCC (
 
 if "%SKIP%"=="0" (
     echo Step 1/2: building the program ...
-    call build_exe.bat /nopause %BUILDOPT%
+    call bin\build_exe.bat /nopause %BUILDOPT%
     if errorlevel 1 ( echo The program build failed. & %PAUSE% & exit /b 1 )
 )
 if not exist "dist\BookReader\BookReader.exe" (
-    echo dist\BookReader\BookReader.exe is missing. Run build_exe.bat first.
+    echo dist\BookReader\BookReader.exe is missing. Run bin\build_exe.bat first.
     %PAUSE%
     exit /b 1
 )
@@ -59,10 +60,10 @@ if not exist "dist\BookReader\BookReader.exe" (
 echo.
 echo Step 2/2: creating the installer (version %VER%) ...
 set "SIGNARGS="
-if exist "sign_config.bat" call "sign_config.bat"
+if exist "bin\sign_config.bat" ( call "bin\sign_config.bat" ) else if exist "sign_config.bat" call "sign_config.bat"
 if defined SIGN_METHOD (
     echo Signing is configured: the installer and uninstaller will be signed too.
-    set SIGNARGS=/DSign=1 "/Sbookreader=$q%CD%\sign_file.bat$q $f"
+    set SIGNARGS=/DSign=1 "/Sbookreader=$q%CD%\bin\sign_file.bat$q $f"
 )
 "%ISCC%" /Qp /DAppVersion=%VER% %SIGNARGS% installer.iss
 if errorlevel 1 ( echo. & echo INSTALLER BUILD FAILED. Scroll up for the reason. & %PAUSE% & exit /b 1 )

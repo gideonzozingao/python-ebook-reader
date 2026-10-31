@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Wraps dist/BookReader.app (from build_exe.sh) in a drag-to-Applications disk image:
+# Wraps dist/BookReader.app (from bin/build_exe.sh) in a drag-to-Applications disk image:
 #     installer/BookReader-<version>-macos-<arch>.dmg
-#   Usage: bash tools/package_macos.sh 1.2.0
+#   Usage: bash bin/package_macos.sh 1.2.0
 #
 # The app gets an "ad-hoc" signature, which Apple Silicon needs to run it at all. It is NOT an
 # Apple Developer ID signature, so on first launch users must right-click the app -> Open
 # (or run: xattr -dr com.apple.quarantine /Applications/BookReader.app).
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.."   # the project folder (this script is in bin)
 
-VERSION="${1:?usage: bash tools/package_macos.sh <version>}"
+VERSION="${1:?usage: bash bin/package_macos.sh <version>}"
 ARCH="$(uname -m)"            # arm64 on Apple Silicon, x86_64 on Intel
 APP="dist/BookReader.app"
 DMG="installer/BookReader-$VERSION-macos-$ARCH.dmg"
 STAGE="build/dmg"
 
 if [ ! -d "$APP" ]; then
-  echo "$APP is missing: run build_exe.sh first." >&2
+  echo "$APP is missing: run bin/build_exe.sh first." >&2
   exit 1
 fi
 

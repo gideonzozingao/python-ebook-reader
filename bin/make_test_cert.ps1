@@ -2,8 +2,8 @@
 # Self-signed means only PCs that choose to trust it will accept it; it does NOT remove
 # SmartScreen warnings for other people. Use it for testing or for a closed group (see BUILD.md).
 #
-#   powershell -ExecutionPolicy Bypass -File .\make_test_cert.ps1            (test only)
-#   powershell -ExecutionPolicy Bypass -File .\make_test_cert.ps1 -Trust     (also trust it on THIS PC)
+#   powershell -ExecutionPolicy Bypass -File .\bin\make_test_cert.ps1            (test only)
+#   powershell -ExecutionPolicy Bypass -File .\bin\make_test_cert.ps1 -Trust     (also trust it on THIS PC)
 param(
     [string]$Subject = "CN=Book Reader (test signing)",
     [string]$PfxPath = "$PSScriptRoot\test-signing.pfx",
@@ -23,5 +23,5 @@ if ($Trust) {   # Windows asks you to confirm adding a root certificate
 Write-Host ""
 Write-Host "Created: $PfxPath"
 Write-Host "Thumbprint: $($cert.Thumbprint)"
-Write-Host "In sign_config.bat use:  set SIGN_METHOD=thumbprint  and  set SIGN_THUMBPRINT=$($cert.Thumbprint)"
+Write-Host "In bin\sign_config.bat use:  set SIGN_METHOD=thumbprint  and  set SIGN_THUMBPRINT=$($cert.Thumbprint)"
 Write-Host "   or:  set SIGN_METHOD=pfx, SIGN_PFX=$PfxPath, SIGN_PASSWORD=<your password>"

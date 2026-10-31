@@ -1,6 +1,6 @@
 @echo off
 rem ===========================================================================
-rem  Copy this file to  sign_config.bat  (it is git-ignored) and enable ONE method.
+rem  Copy this file to  bin\sign_config.bat  (it is git-ignored) and enable ONE method.
 rem  NEVER commit passwords, .pfx files or tokens PINs.
 rem ===========================================================================
 
@@ -12,7 +12,7 @@ rem   or pick the certificate by its subject name:
 rem set SIGN_METHOD=subject
 rem set SIGN_SUBJECT=Your Company Name
 
-rem ---- B) A .pfx file: self-signed or internal-CA certificates (see make_test_cert.ps1) -----
+rem ---- B) A .pfx file: self-signed or internal-CA certificates (see bin\make_test_cert.ps1) -----
 rem      Public CAs no longer issue exportable .pfx files (key must stay in hardware).
 rem set SIGN_METHOD=pfx
 rem set SIGN_PFX=C:\keys\test-signing.pfx

@@ -168,7 +168,7 @@ jobs:
           Set-Content -Path $path -Value ($src.Replace($old, $new)) -NoNewline -Encoding utf8
           Write-Host "The app will look for updates at: $env:UPDATE_URL"
 
-      # Optional. With no secrets the build is simply unsigned (sign_file.bat skips signing).
+      # Optional. With no secrets the build is simply unsigned (bin\sign_file.bat skips signing).
       - name: Prepare code signing (optional)
         shell: pwsh
         env:
@@ -194,11 +194,11 @@ jobs:
           choco install innosetup -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Could not install Inno Setup' }
 
-      # build.ps1 does the work: PyInstaller or Nuitka, signing, the program's --self-test, then
+      # bin/build.ps1 does the work: PyInstaller or Nuitka, signing, the program's --self-test, then
       # the Inno Setup installer and its .sha256. Nuitka uses the runner's Visual Studio compiler.
       - name: Build the program (${{ env.BUILDER }}) and the installer
         shell: pwsh
-        run: ./build.ps1 -Compiler $env:BUILDER -Python python
+        run: ./bin/build.ps1 -Compiler $env:BUILDER -Python python
 
       # Waits with $p.WaitForExit(timeout), never Start-Process -Wait: -Wait also waits for every
       # process the installer starts (such as a relaunched BookReader), which can hang forever.
@@ -299,8 +299,8 @@ jobs:
       - name: Check that the build files are in the repository
         run: |
           missing=0
-          for f in build_exe.sh BookReader.spec requirements-build.txt requirements-build-nuitka.txt \
-                   tools/package_linux.sh packaging/linux/install.sh packaging/linux/book-reader.desktop; do
+          for f in bin/build_exe.sh BookReader.spec requirements-build.txt requirements-build-nuitka.txt \
+                   bin/package_linux.sh packaging/linux/install.sh packaging/linux/book-reader.desktop; do
             if [ ! -f "$f" ]; then echo "::error::Missing from the repository: $f"; missing=1; fi
           done
           if [ "$BUILDER" = "nuitka" ] && [ ! -f tools/build_nuitka.py ]; then
@@ -324,10 +324,10 @@ jobs:
             libfontconfig1 libdbus-1-3
 
       - name: Build the program (${{ env.BUILDER }} + self-test)
-        run: bash build_exe.sh
+        run: bash bin/build_exe.sh
 
       - name: Make the .tar.gz package
-        run: bash tools/package_linux.sh "$VERSION"
+        run: bash bin/package_linux.sh "$VERSION"
 
       - name: Smoke test - unpack, install, self-test, uninstall
         run: |
@@ -370,8 +370,8 @@ jobs:
       - name: Check that the build files are in the repository
         run: |
           missing=0
-          for f in build_exe.sh BookReader.spec requirements-build.txt requirements-build-nuitka.txt \
-                   tools/package_macos.sh; do
+          for f in bin/build_exe.sh BookReader.spec requirements-build.txt requirements-build-nuitka.txt \
+                   bin/package_macos.sh; do
             if [ ! -f "$f" ]; then echo "::error::Missing from the repository: $f"; missing=1; fi
           done
           if [ "$BUILDER" = "nuitka" ] && [ ! -f tools/build_nuitka.py ]; then
@@ -388,10 +388,10 @@ jobs:
             requirements-build*.txt
 
       - name: Build the program (${{ env.BUILDER }} + self-test)
-        run: bash build_exe.sh
+        run: bash bin/build_exe.sh
 
       - name: Make the .dmg
-        run: bash tools/package_macos.sh "$VERSION"
+        run: bash bin/package_macos.sh "$VERSION"
 
       - name: Smoke test - open the .dmg, copy the app out, self-test
         run: |

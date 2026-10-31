@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Packs dist/BookReader (from build_exe.sh) into
+# Packs dist/BookReader (from bin/build_exe.sh) into
 #     installer/BookReader-<version>-linux-<arch>.tar.gz
 # together with a menu entry, an icon and install.sh.
-#   Usage: bash tools/package_linux.sh 1.2.0
+#   Usage: bash bin/package_linux.sh 1.2.0
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.."   # the project folder (this script is in bin)
 
-VERSION="${1:?usage: bash tools/package_linux.sh <version>}"
+VERSION="${1:?usage: bash bin/package_linux.sh <version>}"
 ARCH="$(uname -m)"
 NAME="BookReader-$VERSION-linux-$ARCH"
 WORK="build/linux-package"
@@ -14,7 +14,7 @@ STAGE="$WORK/$NAME"
 VPY="${VENV:-.venv}/bin/python"
 
 if [ ! -x dist/BookReader/BookReader ]; then
-  echo "dist/BookReader/BookReader is missing: run build_exe.sh first." >&2
+  echo "dist/BookReader/BookReader is missing: run bin/build_exe.sh first." >&2
   exit 1
 fi
 

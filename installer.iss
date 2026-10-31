@@ -1,5 +1,6 @@
-; Book Reader installer (Inno Setup 6).  Build it with build_installer.bat, or open this file in
-; the Inno Setup Compiler and press F9 (run build_exe.bat first so dist\BookReader exists).
+; Book Reader installer (Inno Setup 6).  Build it with bin\build.ps1 or bin\build_installer.bat, or
+; open this file in the Inno Setup Compiler and press F9 (run bin\build_exe.bat first so
+; dist\BookReader exists). It stays in the project folder: the paths below are relative to it.
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
@@ -30,7 +31,7 @@ CloseApplications=yes
 RestartApplications=no
 #ifdef Sign
 ; Digitally sign the installer and the uninstaller (the "bookreader" tool is passed to ISCC by
-; build_installer.bat, which calls sign_file.bat).
+; bin\build.ps1 / bin\build_installer.bat, which call bin\sign_file.bat).
 SignTool=bookreader
 SignedUninstaller=yes
 SignToolRetryCount=3

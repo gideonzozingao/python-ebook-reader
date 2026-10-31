@@ -1,20 +1,21 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+cd /d "%~dp0.."
+rem  ^ this file is in bin: everything below runs in the project folder
 set "PAUSE=pause"
 
 rem ---------------------------------------------------------------------------
 rem  Builds Book Reader into a Windows program.
-rem    build_exe.bat            folder build   -> dist\BookReader\BookReader.exe  (recommended)
-rem    build_exe.bat /nuitka    compile with Nuitka (Python -> C -> machine code) instead of
+rem    bin\build_exe.bat            folder build   -> dist\BookReader\BookReader.exe  (recommended)
+rem    bin\build_exe.bat /nuitka    compile with Nuitka (Python -> C -> machine code) instead of
 rem                             PyInstaller. Same result folder; the build takes much longer
 rem                             (often 10-30 minutes) and needs a C compiler: Visual Studio
 rem                             Build Tools if installed, otherwise Nuitka offers to download one.
-rem    build_exe.bat /onefile   single file    -> dist\BookReader.exe  (slower to start;
+rem    bin\build_exe.bat /onefile   single file    -> dist\BookReader.exe  (slower to start;
 rem                             PyInstaller only)
-rem    build_exe.bat /console   keeps a console window (shows errors while testing)
-rem    build_exe.bat /voice     also bundles voice dictation (SpeechRecognition + pyaudio)
-rem    build_exe.bat /nopause   do not wait for a key at the end (used by build_installer.bat)
+rem    bin\build_exe.bat /console   keeps a console window (shows errors while testing)
+rem    bin\build_exe.bat /voice     also bundles voice dictation (SpeechRecognition + pyaudio)
+rem    bin\build_exe.bat /nopause   do not wait for a key at the end (used by build_installer.bat)
 rem  The build tool can also be chosen with the environment variable BUILDER=pyinstaller|nuitka
 rem  (the GitHub workflow does this); /nuitka or /pyinstaller on the command line wins.
 rem ---------------------------------------------------------------------------
@@ -41,7 +42,7 @@ if /i "%BUILDER%"=="nuitka" if "%BR_ONEFILE%"=="1" (
 )
 
 if not exist "epub_reader2.py" (
-    echo Run this from the folder that contains epub_reader2.py and BookReader.spec
+    echo build_exe.bat must stay in the project's bin folder: epub_reader2.py was not found above it.
     %PAUSE% & exit /b 1
 )
 if not exist "book_reader\assets\book_reader.ico" (
@@ -110,7 +111,7 @@ if errorlevel 1 ( echo. & echo BUILD FAILED. Scroll up for the reason. & %PAUSE%
 if "%BR_ONEFILE%"=="1" ( set "EXE=dist\BookReader.exe" ) else ( set "EXE=dist\BookReader\BookReader.exe" )
 if not exist "%EXE%" ( echo. & echo BUILD FAILED: %EXE% was not produced. & %PAUSE% & exit /b 1 )
 echo.
-call sign_file.bat "%EXE%"
+call bin\sign_file.bat "%EXE%"
 if errorlevel 1 ( echo. & echo SIGNING FAILED. & %PAUSE% & exit /b 1 )
 echo.
 echo Checking the packaged program (self-test) ...

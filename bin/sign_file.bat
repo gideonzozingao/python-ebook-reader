@@ -1,14 +1,15 @@
 @echo off
 setlocal EnableExtensions
 rem ---------------------------------------------------------------------------
-rem  Digitally signs ONE file using the method set in sign_config.bat.
-rem  Usage:  sign_file.bat "path\to\file.exe"
+rem  Digitally signs ONE file using the method set in bin\sign_config.bat.
+rem  Usage:  bin\sign_file.bat "path\to\file.exe"   (a relative path is relative to the project folder)
 rem  If signing is not configured the file is left unsigned and the build continues.
 rem ---------------------------------------------------------------------------
-cd /d "%~dp0"
-if exist "sign_config.bat" call "sign_config.bat"
+cd /d "%~dp0.."
+rem  bin\sign_config.bat; the old place next to epub_reader2.py still works
+if exist "bin\sign_config.bat" ( call "bin\sign_config.bat" ) else if exist "sign_config.bat" call "sign_config.bat"
 if "%~1"=="" (
-    echo Usage: sign_file.bat "file"
+    echo Usage: bin\sign_file.bat "file"
     exit /b 2
 )
 if not defined SIGN_METHOD (
@@ -26,7 +27,7 @@ if not defined ST (
 if not defined ST (
     echo [sign] signtool.exe was not found. Install the Windows SDK:
     echo        winget install Microsoft.WindowsSDK.10.0.22621
-    echo        or set SIGNTOOL=full path of signtool.exe in sign_config.bat
+    echo        or set SIGNTOOL=full path of signtool.exe in bin\sign_config.bat
     exit /b 1
 )
 

@@ -1,18 +1,19 @@
 <#
   Build Book Reader -> installer\BookReader-Setup-<version>.exe
 
-  .\build.ps1                       full build (PyInstaller + Inno Setup)
-  .\build.ps1 -Compiler nuitka      compile to native code with Nuitka (harder to reverse engineer)
-  .\build.ps1 -SkipInstaller        only the program folder dist\BookReader, no installer
-  .\build.ps1 -Python "py -3.12"    choose the Python used for the build venv (.venv-build)
-  .\build.ps1 -Console              keep a console window in the program (shows errors)
-  .\build.ps1 -Voice                also bundle voice dictation (SpeechRecognition + pyaudio)
+  .\bin\build.ps1                       full build (PyInstaller + Inno Setup)
+  .\bin\build.ps1 -Compiler nuitka      compile to native code with Nuitka (harder to reverse engineer)
+  .\bin\build.ps1 -SkipInstaller        only the program folder dist\BookReader, no installer
+  .\bin\build.ps1 -Python "py -3.12"    choose the Python used for the build venv (.venv-build)
+  .\bin\build.ps1 -Console              keep a console window in the program (shows errors)
+  .\bin\build.ps1 -Voice                also bundle voice dictation (SpeechRecognition + pyaudio)
 
   Both compilers produce the same dist\BookReader folder, so the installer step is identical.
   Nuitka needs a C compiler: Visual Studio Build Tools ("Desktop development with C++",
   including a Windows SDK) are loaded automatically when installed; otherwise Nuitka offers to
   download MinGW (allowed automatically here).
-  Optional signing: sign_config.bat (see sign_config.example.bat) or SIGN_* environment variables.
+  Optional signing: bin\sign_config.bat (see bin\sign_config.example.bat) or SIGN_* environment
+  variables. Works from any folder: it always builds in the project folder (the parent of bin).
 #>
 param(
     [ValidateSet("pyinstaller", "nuitka")]
@@ -23,7 +24,7 @@ param(
     [switch]$Voice
 )
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
+Set-Location (Split-Path -Parent $PSScriptRoot)   # the project folder (this script is in bin)
 
 function Step([string]$Text) { Write-Host "==> $Text" -ForegroundColor Cyan }
 
@@ -115,9 +116,11 @@ if (-not (Test-Path $exe)) { throw "Expected $exe was not produced" }
 Write-Host "    built $exe" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------- signing (optional)
-if (Test-Path "sign_config.bat") { Import-BatchEnvironment (Resolve-Path "sign_config.bat").Path }
-if (Test-Path "sign_file.bat") {
-    & cmd.exe /d /c sign_file.bat $exe
+# bin\sign_config.bat (the old place, next to epub_reader2.py, still works)
+$signConfig = @("bin\sign_config.bat", "sign_config.bat") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($signConfig) { Import-BatchEnvironment (Resolve-Path $signConfig).Path }
+if (Test-Path "bin\sign_file.bat") {
+    & cmd.exe /d /c bin\sign_file.bat $exe
     if ($LASTEXITCODE -ne 0) { throw "Signing $exe failed" }
 }
 
@@ -160,7 +163,7 @@ $isccArgs = @("/Qp", "/DAppVersion=$version", "/DAppNumVersion=$numVersion")
 if ($env:SIGN_METHOD) {
     Write-Host "    signing the installer and uninstaller too"
     $isccArgs += "/DSign=1"
-    $isccArgs += ('/Sbookreader=$q' + (Join-Path $PWD "sign_file.bat") + '$q $f')
+    $isccArgs += ('/Sbookreader=$q' + (Join-Path $PWD "bin\sign_file.bat") + '$q $f')
 }
 & $iscc @isccArgs installer.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed. Scroll up for the reason." }

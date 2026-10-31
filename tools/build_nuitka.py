@@ -56,7 +56,7 @@ def numeric(version: str) -> str:
 
 def make_icns(work: Path) -> Path:
     """macOS app icon: the largest picture in the .ico, turned into .icns with iconutil."""
-    from PIL import Image  # build-time only; build_exe.sh installs Pillow
+    from PIL import Image  # build-time only; bin/build_exe.sh installs Pillow
 
     im = Image.open(ICON_ICO)
     sizes = im.info.get("sizes") or {im.size}
@@ -101,7 +101,7 @@ def finish_mac_bundle(app: Path, version: str) -> None:
     with plist_path.open("wb") as f:
         plistlib.dump(info, f)
     # Changing Info.plist breaks the existing signature; Apple Silicon will not start an app with
-    # a broken one, so sign it again (ad-hoc; package_macos.sh does the same before the .dmg).
+    # a broken one, so sign it again (ad-hoc; bin/package_macos.sh does the same before the .dmg).
     subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
 
 

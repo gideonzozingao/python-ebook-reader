@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Builds Book Reader with PyInstaller on Linux or macOS (on Windows use build_exe.bat).
+# Builds Book Reader with PyInstaller on Linux or macOS (on Windows use bin\build.ps1).
 #
-#   bash build_exe.sh
+#   bash bin/build.sh                (from any folder: it builds in the project folder)
+#
+# Older, PyInstaller-only version of bin/build_exe.sh (which does the same by default and can
+# also use Nuitka). Kept for existing habits; new setups should use bin/build_exe.sh.
 #
 # Result:  Linux -> dist/BookReader/BookReader        macOS -> dist/BookReader.app
-# Uses the virtual environment in $VENV (default: .venv next to this file), creating it if needed.
+# Uses the virtual environment in $VENV (default: .venv in the project folder), creating it if needed.
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # the project folder (this script is in bin)
 
 VENV="${VENV:-.venv}"
 PY="${PYTHON:-python3}"

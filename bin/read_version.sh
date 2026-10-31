@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prints the app version from book_reader/__init__.py. In a GitHub tag build it also checks that
 # the tag matches (v1.2.0 <-> "1.2.0") and writes version=... to $GITHUB_OUTPUT.
-#   Usage: bash tools/read_version.sh
+#   Usage: bash bin/read_version.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

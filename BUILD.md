@@ -1,15 +1,18 @@
 # Building Book Reader into a Windows program
 
+All build scripts live in the **`bin`** folder. They can be started from anywhere (double-click,
+or `bin\build_exe.bat` from the project folder): each one switches to the project folder first.
+
 1. Extract the whole zip into your project folder (replace everything, including `book_reader`).
-2. Double-click **build_exe.bat** (or run it from PowerShell in this folder).
+2. Double-click **bin\build_exe.bat** (or run `bin\build_exe.bat` from the project folder).
    - It reuses/creates `C:\venv\epub`, installs the requirements and PyInstaller, builds, then
      runs a self-test on the finished program.
    - Result: `dist\BookReader\BookReader.exe` (keep the whole `BookReader` folder together).
-3. Optional switches: `build_exe.bat /onefile` (single .exe, starts slower), `/console`
+3. Optional switches: `bin\build_exe.bat /onefile` (single .exe, starts slower), `/console`
    (shows a console for debugging), `/voice` (bundle voice dictation packages).
 4. One-file installer (recommended for sharing):
    - Install Inno Setup once:  `winget install JRSoftware.InnoSetup`
-   - Double-click **build_installer.bat** (or `build_installer.bat 1.2.0` to set the version).
+   - Double-click **bin\build_installer.bat** (or `bin\build_installer.bat 1.2.0` to set the version).
    - Result: `installer\BookReader-Setup-1.0.0.exe`. It installs the fast folder build, adds a
      Start-menu entry (and an optional desktop icon), an uninstaller, and "Open with" entries
      for .epub, .pdf and .md. Running a newer installer upgrades in place.
@@ -30,9 +33,10 @@ build triggers this less than /onefile. A code-signing certificate removes the w
 Signing proves who published the program and that it was not changed after you built it. It is
 optional: unsigned builds work, but Windows SmartScreen and antivirus warn more often.
 
-1. Get a certificate (see the table below) or make a test one with `make_test_cert.ps1`.
-2. Copy `sign_config.example.bat` to `sign_config.bat` and enable ONE method in it.
-3. Run `build_exe.bat` / `build_installer.bat` as usual. They now sign `BookReader.exe`, the
+1. Get a certificate (see the table below) or make a test one with `bin\make_test_cert.ps1`.
+2. Copy `bin\sign_config.example.bat` to `bin\sign_config.bat` and enable ONE method in it.
+   (A `sign_config.bat` in the project folder, where it used to go, still works.)
+3. Run `bin\build_exe.bat` / `bin\build_installer.bat` (or `bin\build.ps1`) as usual. They now sign `BookReader.exe`, the
    installer and the uninstaller automatically. Without `sign_config.bat` they build unsigned.
 4. Check: `Get-AuthenticodeSignature .\dist\BookReader\BookReader.exe | Format-List`
    (Status should be `Valid`, and the timestamp is part of the signature).
@@ -41,7 +45,7 @@ optional: unsigned builds work, but Windows SmartScreen and antivirus warn more 
 |---|---|
 | Public release, Windows users you do not know | An **OV code-signing certificate** from a public CA (DigiCert, Sectigo, SSL.com, Certum ...). Since June 2023 the private key must stay on a hardware token or CA cloud signer, so you cannot export a .pfx; use method A (thumbprint/subject) or D (the CA's signing tool). Certificates last at most about 15 months. |
 | US/Canada individual or US/Canada/EU/UK organisation | **Azure Artifact Signing** (formerly Trusted Signing), about US$10/month, method C. |
-| Only your own PCs or an organisation you control | A **self-signed or internal-CA certificate** (`make_test_cert.ps1`, method B), trusted on those PCs through Group Policy (Trusted Publishers + Trusted Root). Free, but other PCs will still warn. |
+| Only your own PCs or an organisation you control | A **self-signed or internal-CA certificate** (`bin\make_test_cert.ps1`, method B), trusted on those PCs through Group Policy (Trusted Publishers + Trusted Root). Free, but other PCs will still warn. |
 
 Keep keys and passwords out of the project folder and out of version control (`.gitignore`
 already excludes `sign_config.bat` and `*.pfx`). Sign after building, never before.
@@ -63,7 +67,7 @@ It only updates the *installed* Windows program; a run from source just opens th
 **Every release.**
 
 1. Bump `__version__` in `book_reader/__init__.py` (e.g. `"1.2.0"`).
-2. Run `build_installer.bat` (it takes the version from that file) → `installer\BookReader-Setup-1.2.0.exe`.
+2. Run `bin\build_installer.bat` (it takes the version from that file) → `installer\BookReader-Setup-1.2.0.exe`.
 3. Publish it:
    * *Manifest:* `python tools\make_manifest.py installer\BookReader-Setup-1.2.0.exe --url https://example.com/book-reader/BookReader-Setup-1.2.0.exe --notes "What is new"`,
      then upload the installer **and** `installer\latest.json` to your server (upload `latest.json` last).
@@ -78,7 +82,7 @@ and never run; releases tagged like `1.3.0-beta1` are ignored. Signing the insta
 ## Automated releases (GitHub Actions)
 
 `.github/workflows/release.yml` builds and publishes a release for you, using the same scripts
-as above (`build_installer.bat` -> `build_exe.bat` -> PyInstaller + Inno Setup).
+as above (`bin\build.ps1` on Windows, `bin/build_exe.sh` + `bin/package_*.sh` on Linux and macOS).
 
 **To release:** bump `__version__` in `book_reader/__init__.py`, commit, then
 
@@ -110,7 +114,7 @@ login, so the build leaves updates off and warns you; host `latest.json` somewhe
 the `UPDATE_URL` variable instead.
 
 **Code signing (optional).** Add two repository secrets and the build signs `BookReader.exe`, the
-installer and the uninstaller through your existing `sign_file.bat` (`SIGN_METHOD=pfx`):
+installer and the uninstaller through your existing `bin\sign_file.bat` (`SIGN_METHOD=pfx`):
 
 * `WINDOWS_CERT_PFX_BASE64` - the .pfx file as text: in PowerShell run
   `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx")) | Set-Clipboard`

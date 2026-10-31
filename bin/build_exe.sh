@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Builds Book Reader with PyInstaller on Linux or macOS (on Windows use build_exe.bat).
+# Builds Book Reader with PyInstaller on Linux or macOS (on Windows use bin\build.ps1).
 #
-#   bash build_exe.sh
+#   bash bin/build_exe.sh            (from any folder: it builds in the project folder)
 #
 # Result:  Linux -> dist/BookReader/BookReader        macOS -> dist/BookReader.app
-# Uses the virtual environment in $VENV (default: .venv next to this file), creating it if needed.
+# Uses the virtual environment in $VENV (default: .venv in the project folder), creating it if needed.
 #
 # Choose the build tool with BUILDER:
 #   BUILDER=pyinstaller  (default) bundles Python bytecode; builds in a minute or two
 #   BUILDER=nuitka       compiles the code to C and then to machine code; builds take much longer
 #                        and need a C compiler (gcc on Linux, Xcode command line tools on macOS)
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # the project folder (this script is in bin)
 
 VENV="${VENV:-.venv}"
 PY="${PYTHON:-python3}"
@@ -30,7 +30,7 @@ VPY="$VENV/bin/python"
 
 echo "Installing build requirements ..."
 "$VPY" -m pip install --upgrade pip
-# Same requirement files as build.ps1 on Windows (they add Pillow for the icons, and Nuitka's
+# Same requirement files as bin/build.ps1 on Windows (they add Pillow for the icons, and Nuitka's
 # patchelf on Linux).
 if [ "$BUILDER" = "nuitka" ]; then REQS=requirements-build-nuitka.txt; else REQS=requirements-build.txt; fi
 "$VPY" -m pip install -r "$REQS"

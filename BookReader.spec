@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller recipe for Book Reader, for Windows, Linux and macOS.
-#     Windows:        build_exe.bat
-#     Linux / macOS:  bash build_exe.sh
+#     Windows:        bin\build.ps1  or  bin\build_exe.bat
+#     Linux / macOS:  bash bin/build_exe.sh
 #     or directly:    pyinstaller --noconfirm --clean BookReader.spec
 #
 # Result:  Windows -> dist/BookReader/BookReader.exe   Linux -> dist/BookReader/BookReader
@@ -17,8 +17,8 @@ IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
 
 # Windows uses the .ico as is. On macOS PyInstaller converts it to .icns (needs Pillow in the
-# build environment; build_exe.sh installs it). Linux programs have no embedded icon: the menu
-# icon comes from tools/package_linux.sh.
+# build environment; bin/build_exe.sh installs it). Linux programs have no embedded icon: the menu
+# icon comes from bin/package_linux.sh.
 ICON = "book_reader/assets/book_reader.ico"
 
 # A macOS .app is always a folder build; a single-file program inside an .app starts slowly and
